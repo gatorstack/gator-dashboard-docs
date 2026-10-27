@@ -23,7 +23,7 @@ Chart доступен в каталоге `gator-dashboard/charts/gator-dashboa
 Примеры используют namespace `gator-dashboard`, проект `team-a` и домен
 `dashboard.example.org`. Замените домен, Ingress class и файлы сертификата своими.
 Для примеров каталога ролей используется образ
-`valerahex/gator-dashboard:0.2.0`.
+`valerahex/gator-dashboard:0.3.4`.
 При выборе другой поставки используйте согласованные версии chart и образа.
 
 Консоль устанавливается без облачных продуктов. Пакеты каталога и provider runtime
@@ -62,7 +62,7 @@ oc --context "$GATOR_CONTEXT" -n gator-dashboard create secret tls dashboard-tls
 ```yaml
 image:
   repository: valerahex/gator-dashboard
-  tag: 0.2.0
+  tag: 0.3.4
 replicaCount: 1
 cookieSecure: true
 iam:

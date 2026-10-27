@@ -178,7 +178,9 @@ approval, reservations квот или полный журнал облачны�
 По умолчанию CreateResource резервирует имя на invocation. Если нужен один слот
 на выбранную identity независимо от requestId, в целевом `create` задайте
 `nameFromInput: [/disk/uid]`. Hash включает проект, ProductResource и target GVK.
-Все указанные поля должны быть непустыми строками. Canonical schema, selections,
+Все указанные поля должны быть непустыми строками, числами или boolean. Тип
+учитывается в hash: число `443` отличается от строки `"443"`. Объекты, массивы
+и отсутствующие значения не допускаются. Canonical schema, selections,
 scope и RBAC всё равно проверяются до POST. Ключ выбирают по проверенной identity,
 а не по редактируемой подписи. Это предотвращает создание двух attachment CR
 для диска даже при разных подтверждениях. Слот сохраняется до удаления CR,
@@ -248,3 +250,51 @@ Schema `type: object`, `properties: {}`; все ограничения испо�
 После подтверждения карточка показывает уведомление «Запрос принят». Это
 подтверждение записи CR; завершения дождитесь в статусе. Уведомление можно закрыть,
 после перезагрузки страницы оно не появляется повторно.
+
+
+## Изменять членство в наборе
+
+Selection mapping может использовать `transform: AppendUnique`, чтобы добавить
+выбранное строковое значение в существующий массив, либо `RemoveValue`, чтобы
+снять только его. Операция сохраняет остальные элементы; повторное добавление
+не создаёт дубль. `RemoveValue` запрещает удаление последнего элемента массива.
+Путь должен быть явно указан в `mutablePaths`, выбранный CR проходит обычную
+проверку lookup, UID и RBAC. Например:
+
+```yaml
+selections:
+  - inputPath: /group
+    lookupRef: groups
+    mappings:
+      - fromSelected: /status/atProvider/id
+        toObject: /spec/forProvider/securityGroupIds
+        transform: AppendUnique
+mutablePaths: [/spec/forProvider/securityGroupIds]
+```
+
+Защиту удаления основного CR можно выразить через `spec.delete.preconditions`:
+
+```yaml
+delete:
+  enabled: true
+  title: Удалить ресурс
+  preconditions:
+    - path: /metadata/annotations/example.org~1delete-protected
+      values: ['false']
+      message: Сначала снимите защиту удаления.
+```
+
+Отсутствующее поле не считается разрешением. Legacy `protectionPath` сохраняет
+проверку именно boolean `false`; строковые annotations проверяйте preconditions.
+Новые ActionInvocation получают labels `dashboard.gatorstack.dev/product` и
+`dashboard.gatorstack.dev/resource`, чтобы ReadOnly страницы могли выбирать
+журнал своего продукта через обычный selector.
+
+Имена объектов каталога длиннее допустимого label value получают стабильное
+значение `id-` плюс первые 40 hex-символов SHA-256 JSON-строки имени. Исходные
+полные имена сохраняются в spec журнала; для обычных имён labels равны именам.
+
+Если построение имени завершилось ошибкой до отправки записи, invocation получает
+Rejected. После исправления данных можно подтвердить действие заново. Изменение
+контракта для уже Executing/Applied invocation остаётся заблокированным: неизвестный
+или применённый результат нельзя автоматически повторять.
