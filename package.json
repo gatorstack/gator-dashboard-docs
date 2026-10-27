@@ -1,0 +1,26 @@
+{
+  "name": "gator-dashboard-docs",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Документация Gator Dashboard, IAM, Gator Dex и биллинга Gator Cost",
+  "engines": { "node": ">=20.0" },
+  "scripts": {
+    "start": "docusaurus start --host 127.0.0.1",
+    "build": "docusaurus build",
+    "serve": "docusaurus serve --host 127.0.0.1",
+    "clear": "docusaurus clear",
+    "docs:sync": "node scripts/sync-docs.mjs",
+    "docs:check": "node scripts/sync-docs.mjs --check"
+  },
+  "dependencies": {
+    "@docusaurus/core": "3.10.2",
+    "@docusaurus/preset-classic": "3.10.2",
+    "@docusaurus/theme-mermaid": "3.10.2",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  },
+  "browserslist": {
+    "production": [">0.5%", "not dead", "not op_mini all"],
+    "development": ["last 1 chrome version", "last 1 firefox version", "last 1 safari version"]
+  }
+}
