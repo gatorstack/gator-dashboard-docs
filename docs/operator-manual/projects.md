@@ -31,39 +31,19 @@ CRD и webhook требуют `metadata.name: project`. Другой Project в 
 
 ## Настроить квоту
 
-Пример лимита на 20 ConfigMap:
-
-```yaml
-apiVersion: v1
-kind: ResourceQuota
-metadata:
-  name: configmaps-count
-  namespace: team-a
-  annotations:
-    title: Конфигурации проекта
-spec:
-  hard:
-    count/configmaps: "20"
-```
+Установите [Gator Quotas](quotas.md), создайте ClusterQuotaTemplate с правилами
+по нужным GVK, затем добавьте к namespace аннотацию:
 
 ```sh
-oc --context "$GATOR_CONTEXT" apply -f quota.yaml
-oc --context "$GATOR_CONTEXT" -n team-a get resourcequota
+oc --context "$GATOR_CONTEXT" annotate namespace team-a quotas.gatorstack.dev/use-quotas=true
+oc --context "$GATOR_CONTEXT" -n team-a get quotas.quotas.gatorstack.dev
 ```
 
-Используйте отдельную квоту на каждый kind. Текущая страница Home / Квоты
-настроена на objectCount с одним count-ключом в квоте.
-
-| Ресурс | Ключ |
-| --- | --- |
-| ConfigMap | `count/configmaps` |
-| Pod | `count/pods` |
-| Service | `count/services` |
-| PVC | `count/persistentvolumeclaims` |
-| CR | `count/<plural>.<api-group>` |
-
-Пользователям нужны get/list/watch ResourceQuota. В общих ролях Gator
-эти права есть уже на уровне `auditor`. Поле использования заполняет Kubernetes.
+Контроллер копирует подходящие шаблоны и ставит quota-copied=true. Дождитесь
+этого маркера перед созданием ресурсов. Последующие изменения шаблонов не
+переписывают существующие Quota; лимиты проекта меняются явно администратором.
+Home / Квоты показывает план/факт, резервы и остаток из Quota.status.
+Права get/list/watch Quota выдаются проектным RoleBinding.
 
 ## Удаление проекта
 

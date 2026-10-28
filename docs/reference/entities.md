@@ -236,11 +236,17 @@ Role действует внутри namespace; ClusterRole может повт�
 RoleBinding ссылается на Role того же namespace либо ClusterRole.
 ClusterRoleBinding — только на ClusterRole. roleRef после создания неизменяем.
 
-## ResourceQuota
+## ClusterQuotaTemplate, Quota и QuotaLedger
 
-**Область:** namespace проекта. `spec.hard` задаёт лимиты, `status.hard` и
-`status.used` заполняет Kubernetes. Для Home / Квоты используется один ключ
-objectCount на квоту. `metadata.annotations.title` задаёт читаемое название.
+API `quotas.gatorstack.dev/v1alpha1`. ClusterQuotaTemplate — кластерный шаблон;
+Quota — namespaced правила apiVersion/kind/expression/hard/message.
+Quota.status.hard — план, used — факт, reserved — незавершённые запросы,
+available — остаток, overage — превышение. QuotaLedger — служебные атомарные
+резервы namespace; проектным ролям не выдаётся его изменение.
+[API и выражения](quotas.md), [управление](../operator-manual/quotas.md).
+
+Штатный Kubernetes ResourceQuota может независимо действовать для ресурсов
+Kubernetes; раздел Home / Квоты читает Gator Quota.
 
 ## CostConfiguration
 

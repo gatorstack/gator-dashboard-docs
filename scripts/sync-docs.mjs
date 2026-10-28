@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const check = process.argv.includes('--check');
 const sources = [
+  { key: 'quotas', repo: 'gator-quotas', entries: ['README.md', 'docs', 'examples', 'charts/gator-quotas/README.md', 'charts/gator-quotas/values.yaml', 'charts/gator-quotas/crds'] },
   { key: 'dashboard', repo: 'gator-dashboard', entries: ['README.md', 'docs', 'backend/README.md', 'frontend/README.md', 'charts/gator-dashboard/README.md', 'example', 'charts/gator-dashboard/values.yaml', 'charts/gator-dashboard/crds', 'charts/gator-dashboard/templates/standard-roles.yaml', 'charts/gator-dashboard/templates/role-catalog.yaml', 'charts/gator-dashboard/templates/iam-password-role.yaml', 'charts/gator-dashboard/templates/authentificated-rbac.yaml'] },
   { key: 'dex', repo: 'gator-dex', entries: ['docs/gator', 'examples/gator/config.yaml', 'examples/gator/users-groups.yaml'] },
   { key: 'cost', repo: 'gator-cost', entries: ['README.md', 'docs', 'examples/openmeter', 'examples/proposed', 'patches/openmeter/invoice-simulation-engine.patch'] },

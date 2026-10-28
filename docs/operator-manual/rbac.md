@@ -113,7 +113,7 @@ Kubernetes RBAC не умеет скрывать отдельные поля spe
 ```sh
 oc --context "$GATOR_CONTEXT" auth can-i get projects.dashboard.gatorstack.dev/project \
   -n team-a --as=dex:alice
-oc --context "$GATOR_CONTEXT" auth can-i list resourcequotas -n team-a --as=dex:alice
+oc --context "$GATOR_CONTEXT" auth can-i list quotas.quotas.gatorstack.dev -n team-a --as=dex:alice
 oc --context "$GATOR_CONTEXT" -n team-a get rolebindings
 ```
 
@@ -245,3 +245,11 @@ Label selector в форме фильтрует предложения, но н�
 права чтения — потребителям. Прямую запись запрещённых provider IDs ограничивает
 admission/gate; ограничения формы сами по себе этого не обеспечивают.
 См. [правила Kubernetes RBAC](https://kubernetes.io/docs/reference/access-authn-authz/rbac/).
+
+## Чтение квот
+
+Gator Quotas поставляет ClusterRole gator-quotas-viewer с get/list/watch Quota
+в quotas.gatorstack.dev. Она агрегируется в общие роли Gator и native view.
+RoleBinding ограничивает доступ выбранным namespace. Template, ledger и
+изменение лимитов доступны только администраторам. Для legacy projectviewer
+укажите чтение нового Quota в standardRoles установки консоли.

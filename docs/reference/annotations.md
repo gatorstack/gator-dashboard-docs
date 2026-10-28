@@ -18,8 +18,16 @@
 
 ## Квоты
 
-Аннотация `title` ResourceQuota задаёт название строки. Без непустого title
-используется metadata.name. Ограничение задаётся spec.hard, а не аннотацией.
+| Ключ | Где | Назначение |
+| --- | --- | --- |
+| quotas.gatorstack.dev/use-quotas | Аннотация Namespace, 'true' | Скопировать подходящие шаблоны |
+| quotas.gatorstack.dev/quota-copied | Аннотация Namespace, 'true' | Копирование завершено; не повторять |
+| quotas.gatorstack.dev/template-uid | Аннотация Quota | Происхождение копии |
+| quotas.gatorstack.dev/template-generation | Аннотация Quota | Ревизия исходного шаблона при копировании |
+
+Удаление quota-copied разрешает копирование новых шаблонов, сохраняя уже
+созданные квоты. Изменение шаблона не перезаписывает проектные лимиты.
+[Порядок настройки](../operator-manual/quotas.md).
 
 ## Метки учёта
 
