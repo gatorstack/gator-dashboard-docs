@@ -128,6 +128,59 @@ target GVK и правила создания. Переходы и кнопки 
 Параметризованные действия и создание связанных CR описаны в
 [руководстве действий](resource-actions.md).
 
+## Встроенные сессии
+
+Секция `remote-session` открывает временный интерактивный интерфейс ресурса,
+например VNC, внутри карточки. Она не создаёт дополнительный инфраструктурный CR.
+Пример секции в `x-dashboard-detail.sections`:
+
+```yaml
+- title: Консоль
+  tab: console
+  renderer: remote-session
+  session:
+    id: console
+    adapterRef:
+      name: remote-access
+    parameters:
+      protocol: vnc
+      type: novnc
+```
+
+Добавьте вкладку `id: console` в `x-dashboard-detail.tabs`. `id` сессии уникален
+в пределах страницы. `parameters` — фиксированные параметры адаптера;
+`preconditions` проверяют поля текущего CR тем же контрактом, что действия.
+
+Оператор установки подключает сервис отдельно от схемы страницы:
+
+```yaml
+resourceSessions:
+  adapters:
+  - name: remote-access
+    url: http://remote-access.integrations.svc:8080
+    existingSecret: remote-access-credential # ключ token
+    allowedOrigins:
+    - https://console.example.org
+```
+
+Создайте credential Secret в namespace Dashboard и смонтируйте тот же credential
+в адаптер. URL сервиса и разрешённые origins задаёт оператор; пользователь не
+может передать произвольный endpoint в запросе. Используйте отдельный origin
+для встраиваемого интерфейса, HTTPS и WebSocket. Не передавайте credential в Git.
+
+При выборе вкладки Dashboard проверяет доступ к проекту/каталогу, читает основной
+CR с правами пользователя, сверяет UID/selector и выполняет SelfSubjectAccessReview
+для verb `connect` на конкретное имя/GVR/namespace. Схема не выдаёт разрешение.
+Только после проверки адаптер получает POST `/v1/sessions` с `target`
+(apiVersion, kind, namespace, name, uid), `parameters` и сервисным Bearer credential.
+Пользовательский Kubernetes token, spec CR и Secret ему не пересылаются.
+
+Ответ адаптера: `url` и `expiresAt` в RFC3339, срок от текущего времени до часа.
+Адрес должен принадлежать HTTPS origin из allowlist, без userinfo и fragment.
+Redirects адаптера не выполняются. URL возвращается с no-store и не записывается
+в CR или историю действий. Iframe использует sandbox и no-referrer. При закрытой
+вкладке сессия не запрашивается; переподключение получает новый адрес.
+
 ## Общий справочник
 
 Namespace заказа и namespace справочника независимы. Например, VM создаётся
