@@ -30,12 +30,40 @@
 | `spec.description` | Описание и текст для поиска |
 | `spec.logo` | HTTPS URL или путь к логотипу от корня сайта |
 | `spec.badges[]` | Метки с title/color, до восьми |
-| `spec.menu[]` | Порядок страниц, поля name/title |
+| `spec.menu[]` | Порядок страниц, поля name/title/description и необязательный icon |
+| `spec.menu[].icon` | Иконка пункта страницы: путь от корня сайта, HTTPS URL или base64 data URI PNG/JPEG/WebP/SVG; до 16384 символов |
+| `spec.navigation.overviewIcon` | Иконка автоматически создаваемого пункта «Обзор», тот же формат |
 | `spec.projectCard.schema.inline` | Схема карточки сервиса на Home: JSON-объект либо JSON-строка |
 | `spec.projectCard.schema.configMapRef` | Альтернатива inline: имя ConfigMap каталога и ключ схемы |
 
 Product описывает интерфейс сервиса. Он не устанавливает оператор продукта,
 не создаёт нагрузку и не выдаёт права на исходные ресурсы.
+
+`menu[].name` связывает значок с `metadata.name` страницы ProductPage. Он
+работает и для страниц внутри групп. Без иконки или при ошибке загрузки
+показывается общий значок страницы. Изображение декоративно и не меняет
+доступное имя ссылки. HTML/JavaScript не исполняются; HTTPS-запрос не передаёт Referer.
+
+```yaml
+apiVersion: dashboard.gatorstack.dev/v1alpha1
+kind: Product
+metadata:
+  name: example-service
+  namespace: gator-dashboard
+spec:
+  name: Example Service
+  category: Infrastructure
+  navigation:
+    overviewIcon: https://static.example.org/icons/overview.svg
+  menu:
+    - name: example-resources
+      title: Ресурсы
+      icon: https://static.example.org/icons/resources.svg
+```
+
+В примере замените адреса изображений своими и добавьте ProductPage с именем
+`example-resources`. Вместо внешнего URL можно встроить SVG как
+`data:image/svg+xml;base64,...`, чтобы не размещать отдельные файлы.
 
 В projectCard указывается ровно один источник схемы, до 256 KiB. Схема:
 `type: object`, `x-dashboard-view: project-card`, `x-dashboard-card.rows`.
