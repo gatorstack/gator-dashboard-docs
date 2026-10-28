@@ -162,6 +162,11 @@ oc --context YOUR_CONTEXT apply --server-side --field-manager=gator-quotas-crds 
 новый контракт. Перед изменением действующих правил остановите writers и
 дождитесь пустого ledger; неизвестные резервы не удаляйте.
 
+Для иконки группы обновите runtime и CRD до 0.3.1 или новее, задайте
+spec.groupIcon (например, /logos/compute.svg) в Quota и quotaSpec шаблона.
+Существующие копии измените явно: copy-once не переносит правки шаблона.
+Одинаковое название группы должно использовать одинаковую иконку.
+
 Задайте spec.group и общий metric у правил из [справочника региональных правил](../reference/quotas.md#группа-показатель-и-региональные-выражения).
 Для InstanceV2 можно фильтровать .spec.forProvider.region; для ConfigMap —
 .metadata.labels.region. Условия where выполняются перед expression; они

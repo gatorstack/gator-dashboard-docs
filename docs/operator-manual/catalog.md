@@ -265,6 +265,7 @@ type: object
 x-dashboard-list:
   metrics:
     groupPath: /spec/group
+    groupIconPath: /spec/groupIcon
     itemsPath: /spec/rules
     idPath: /name
     titlePath: /title
@@ -295,7 +296,11 @@ scope/unit читаются относительно элемента itemsPath,
 элементом; renderer не складывает пересекающиеся области и не конвертирует единицы.
 
 Layout предоставляет поиск, фильтр областей, сортировку и сворачиваемые группы
-с/без потребления. nearPercent задаёт порог «Почти закончились» (по умолчанию
+с/без потребления. Все группы изначально свёрнуты; раскрытие сохраняется при
+фильтрах и watch, пока страница открыта. Необязательный groupIconPath задаёт путь
+к источнику иконки группы в CR: HTTPS URL, путь от корня или base64 data:image
+(PNG/JPEG/WebP/SVG). Недоступное изображение заменяется стандартной иконкой.
+nearPercent задаёт порог «Почти закончились» (по умолчанию
 80%, допустимо 1–100); индикатор учитывает резерв. conditionsPath требует
 conditionType. При несовпадении observedGeneration с metadata.generation или
 условии не True факт помечается неактуальным. Отсутствующий факт остаётся «—».
