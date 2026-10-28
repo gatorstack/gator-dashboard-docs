@@ -25,7 +25,7 @@
 Форма создания разделена на общую информацию, образ и загрузочный диск,
 вычислительные ресурсы, сеть, доступ и дополнительные настройки. Размер
 загрузочного диска задаётся в GiB; диск создаётся через blockDevice того же
-InstanceV2 и удаляется вместе с VM. Cloud-init задаётся только при создании.
+InstanceV2 и удаляется вместе с VM. Cloud-init задаётся только при создании. По умолчанию форма и шаблон заказа содержат `ssh_pwauth: false`: используется выбранный SSH-ключ. Сохраните эту настройку в своём user-data, если парольный SSH не требуется.
 В списке flavors показаны vCPU, RAM и размер локального диска конфигурации;
 размер загрузочного volume задаётся отдельно.
 
@@ -52,6 +52,63 @@ SSH-ключа: только готовые и синхронизированн�
 conditions Ready/Synced показываются отдельно. Созданный Kubernetes CR ещё не
 подтверждает готовность VM или гостевой ОС. Удаление также может занимать время
 до завершения finalizer провайдера.
+
+
+## Региональные каталоги образов
+
+Образ загружается в Glance выбранного облака. Синхронизация публикует доступные
+tenant-подключению активные образы как штатные Observe-only
+`ImageV2.images.openstack.m.crossplane.io/v1alpha1` в namespace каталога.
+В JSON Schema источник и региональный фильтр уже описаны GVK lookup: новые ОС
+появляются без изменения кода Dashboard. Образы другого региона не предлагаются.
+Импорт в один Keystone не переносит содержимое в другой — загрузите отдельную
+копию, если образ нужен в нескольких регионах.
+
+Используйте официальные cloud images amd64/x86_64 с cloud-init, проверьте
+контрольную сумму поставщика и виртуальный размер qcow2. Для FreeBSD выбирайте
+BASIC-CLOUDINIT, например UFS, а не обычный VM image без инициализации облака. Он использует штатный nuageinit; поддерживаемые параметры user-data описаны в [nuageinit(7)](https://man.freebsd.org/cgi/man.cgi?query=nuageinit&sektion=7). Для Cinder/KVM задайте image properties `hw_disk_bus=scsi`, `hw_scsi_model=virtio-scsi` и `img_config_drive=mandatory`. Config drive передаёт metadata и ключи без [зависания DHCP в исходном nuageinit образа 15.1](https://cgit.freebsd.org/src/commit/libexec?id=13d5f20e5b9ecb42ecf7de4e98d5af0bd5d63c82).
+Сжатый qcow2.xz сначала распакуйте. Нельзя загружать образ, зависящий от внешнего
+backing file. Размер загрузочного диска должен быть не меньше virtual size и
+Glance min_disk; min_ram должен соответствовать выбранному flavor.
+CentOS Stream 10 требует CPU с x86-64-v3, включая виртуальный CPU гостя.
+
+Пример импорта подготовленного и проверенного файла:
+
+```sh
+openstack --os-cloud my-region image create debian-13-amd64 \
+  --disk-format qcow2 --container-format bare --file debian-13-amd64.qcow2 \
+  --public --min-disk 3 --min-ram 1024 \
+  --property architecture=x86_64 --property os_distro=debian \
+  --property os_version=13 --property os_admin_user=debian \
+  --property gator_title=Debian --property gator_group=Debian \
+  --property 'gator_variant=13 · x86_64' \
+  --property 'gator_description=Debian 13 Trixie с cloud-init. Пользователь SSH: debian.'
+```
+
+Для `--public` нужны соответствующие права OpenStack. Вместо публикации для всех
+проектов можно настроить image sharing и membership целевого tenant. Видимость
+проверяется OpenStack, а доступ к ImageV2 — Kubernetes RBAC.
+`gator_icon` принимает разрешённый image URL или base64 data URI; при его отсутствии
+используется нейтральный значок. Значения `gator_title/group/variant/description/icon`
+синхронизируются в аннотации `catalog.gatorstack.dev/title`, `group`, `variant`,
+`description`, `icon`. `iaas.imageCatalog` в Helm values может переопределять их
+по UUID или имени, не меняя содержимого образа.
+
+Стандартные пользователи официальных образов:
+
+| Образ | Пользователь SSH |
+| --- | --- |
+| Ubuntu 22.04 / 24.04 LTS | ubuntu |
+| Debian 13 | debian |
+| CentOS Stream 10 | cloud-user |
+| FreeBSD 15.1 BASIC-CLOUDINIT | freebsd |
+
+Доступ выполняется по выбранному SSH-ключу. Проверяйте имя пользователя в
+описании образа; команда из карточки ресурса может содержать префикс,
+настроенный оператором в JSON Schema. После импорта дождитесь успешной
+синхронизации каталога, проверьте регион, карточку и тестовую загрузку с SSH.
+Не заменяйте содержимое уже используемого образа под прежним UUID: новый build
+публикуйте отдельным образом, сохраняя старые VM и их источник.
 
 ## Подключить и отключить диск
 
