@@ -2,7 +2,7 @@
 
 ## Установка
 
-Нужны Kubernetes 1.30+, Helm 3, административный доступ для CRD/RBAC/webhook
+Нужны Kubernetes 1.30+, Helm 3, CNI с исполнением NetworkPolicy, административный доступ для CRD/RBAC/webhook
 и сетевой доступ API server к Service webhook на 443. По умолчанию используется
 установленный cert-manager. Выберите кластер явно:
 
@@ -18,6 +18,8 @@ oc --context YOUR_CONTEXT apply --server-side -f charts/gator-quotas/crds/
 
 ```yaml
 replicas: 2
+networkPolicy:
+  apiServerCIDRs: ['192.0.2.10/32'] # замените source IP API server вашего кластера
 sourceRBAC:
   - apiGroups: [platform.example.org]
     resources: [virtualmachines]
@@ -174,3 +176,23 @@ Status не перехватывается. Если GVK имеет нескол
 apiVersion, объявленную в правиле: другая версия того же source GVR отклоняется,
 а не пропускает квоту. Для миграции версии остановите writers, дождитесь пустых
 резервов и обновите все правила этого ресурса согласованно.
+
+## Доступ к admission endpoint
+
+AdmissionReview не является подписанным документом. Запросам к webhook должен
+иметь доступ только доверенный control plane. Chart включает NetworkPolicy,
+разрешающую порт 9443 из kube-system и настроенных networkPolicy.apiServerCIDRs;
+обычные Pod проектов доступа не получают. Нужен CNI, который реально исполняет
+NetworkPolicy. Укажите source CIDRs API server до включения webhook, учитывая
+SNAT и топологию control plane. Трафик от локального узла и hostNetwork относится
+к доверенной инфраструктуре: не выдавайте tenant права создавать hostNetwork/
+privileged Pod или менять политики сети namespace компонента.
+
+Не публикуйте Service через Ingress/NodePort. Если платформенная сеть не может
+обеспечить изоляцию, настройте аутентифицированный транспорт API server к webhook
+перед использованием hard quota; выключенная/неисполняемая NetworkPolicy сама
+по себе не аутентифицирует AdmissionReview. Проверьте, что API server продолжает
+создавать разрешённые ресурсы, а обычный Pod проекта не может установить TCP
+соединение с Service webhook на 443.
+
+Семантика исполнения сетевых правил описана в [документации Kubernetes NetworkPolicy](https://kubernetes.io/docs/concepts/services-networking/network-policies/).
