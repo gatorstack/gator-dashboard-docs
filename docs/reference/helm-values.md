@@ -88,3 +88,18 @@ rbac:
 
 Тарифы и выбор ресурсов задаются через CRD, а не через значения chart:
 [настройка учёта](../operator-manual/billing-configuration.md).
+
+## Прогноз заказа
+
+| Chart / поле | Назначение |
+| --- | --- |
+| Dashboard `billing.enabled` | Подключить серверный адаптер прогноза |
+| Dashboard `billing.adapterName`, `adapterURL` | Имя подключения и доверенный внутренний HTTP(S) URL |
+| Dashboard `billing.existingSecret` | Secret в namespace Dashboard, ключ token |
+| Cost `estimate.enabled`, `estimate.existingSecret` | Включить отдельную авторизацию /v2/estimate; Secret с ключом token |
+| Продукты `billing.enabled` | Установить BillingBinding, MeteringPolicy и привязки ресурсов |
+| Продукты `billing.projectNamespaces` | Явный список namespace источников для установленных правил |
+| OpenMeter `clickhouse.resources`, `clickhouse.maxServerMemoryUsage` | Лимиты Pod и внутренний бюджет ClickHouse; настройте под объём истории |
+
+Бизнес-правила описывает [BillingBinding](billing-binding.md). Secret адаптера
+отдельный от административного bearer Cost; он не открывает административный API.

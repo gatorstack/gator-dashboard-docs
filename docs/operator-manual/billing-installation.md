@@ -107,7 +107,7 @@ spec:
 ```yaml
 image:
   repository: valerahex/gator-cost
-  tag: 20261015-07
+  tag: 20261028-01
 postgres:
   storageClass: your-storage-class
   storageSize: 10Gi
@@ -173,7 +173,8 @@ aggregation:
     password: REPLACE_WITH_CLICKHOUSE_PASSWORD
     database: openmeter
 sink:
-  minCommitCount: 1
+  minCommitCount: 1000
+  maxCommitWait: 1s
   namespaceRefetch: 1s
   namespaceRefetchTimeout: 1s
   kafka:
@@ -243,3 +244,55 @@ oc --context "$GATOR_CONTEXT" -n gator-cost port-forward \
 процессу вашей организации. Настройте [резервное копирование](backup.md) всех
 хранилищ. Самостоятельный UI не следует публиковать как пользовательский портал:
 SSO и разграничение доступа в нём пока отсутствуют.
+
+## Подключите стоимость заказа к Dashboard
+
+Создайте в namespaces gator-cost и Dashboard Secret `gator-billing-estimator`
+с одинаковым случайным token. Используйте отдельный файл estimate-token в вашем
+защищённом каталоге. Административный API token для этого не подходит.
+
+```sh
+oc --context "$GATOR_CONTEXT" -n gator-cost create secret generic gator-billing-estimator \
+  --from-file=token="$GATOR_BILLING_SECRETS/estimate-token"
+oc --context "$GATOR_CONTEXT" -n gator-dashboard create secret generic gator-billing-estimator \
+  --from-file=token="$GATOR_BILLING_SECRETS/estimate-token"
+```
+
+Добавьте в values Gator Cost и примените его chart:
+
+```yaml
+estimate:
+  enabled: true
+  existingSecret: gator-billing-estimator
+```
+
+Добавьте в values отдельного chart Dashboard и примените chart:
+
+```yaml
+billing:
+  enabled: true
+  adapterName: default
+  adapterURL: http://gator-cost-api.gator-cost.svc:8080
+  existingSecret: gator-billing-estimator
+```
+
+Перед upgrade обновите CRD из комплекта: Helm не обновляет существующие CRD
+автоматически. Для пакетов IaaS/VPC включите billing.enabled, укажите собственные
+billing.projectNamespaces, проверьте family tariffPlanRef и установите свои ставки.
+Collector должен иметь read-only sourcePermissions на каждый GVR этих правил.
+Продуктовые пакеты сами не предоставляют цены для вашего облака.
+
+Для произвольного продукта создайте [BillingBinding](../reference/billing-binding.md)
+и MeteringPolicy. Убедитесь, что пользователь видит каталог и может создавать
+целевой CR. Откройте Create-форму и сравните компоненты с принятым тарифом.
+Прогноз не требует публикации административного Cost UI. URL адаптера задаёт
+оператор, перенаправления HTTP запрещены; секрет не попадает в браузер.
+
+Следите за Ready и памятью ClickHouse, состоянием sink worker, Kafka backlog и
+возрастом outbox. Готовность API OpenMeter сама по себе не гарантирует доступность
+агрегации. Увеличение лимитов не заменяет планирование ёмкости и backup.
+
+Для небольшого и среднего потока используйте sink.minCommitCount: 1000 и
+maxCommitWait: 1s: пакетная запись уменьшает количество вставок и служебных
+логов ClickHouse. После изменения конфигурационного Secret перезапустите sink.
+При восстановлении дождитесь обработки consumer lag; не сбрасывайте offsets.
