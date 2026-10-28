@@ -252,3 +252,56 @@ Home использует `x-dashboard-view: project-overview` по умолча
 После этого `labelMappings` задают обязательные метки из параметров операции.
 При изменении существующего ресурса разрешены только явно объявленные отдельные
 ключи metadata: целая карта не заменяется, чтобы не потерять метки контроллеров.
+
+## Группированные показатели и региональная разбивка
+
+Для списка показателей вместо обычной таблицы задайте `x-dashboard-list.metrics`.
+Этот layout работает с любым GVK: структура данных определяется путями JSON
+Pointer. Например, Quota хранит элементы в spec.rules, а факт/план — в status maps.
+Фрагмент schema для такой структуры:
+
+```yaml
+type: object
+x-dashboard-list:
+  metrics:
+    groupPath: /spec/group
+    itemsPath: /spec/rules
+    idPath: /name
+    titlePath: /title
+    metricPath: /metric
+    scopePath: /scope
+    unitPath: /unit
+    usedPath: /status/used
+    hardPath: /status/hard
+    reservedPath: /status/reserved
+    conditionsPath: /status/conditions
+    conditionType: Ready
+    observedGenerationPath: /status/observedGeneration
+    nearPercent: 80
+    nameTitle: Квота
+    usageTitle: Использование
+    searchPlaceholder: Название или ID квоты, группа
+    scopeLabel: Регионы и зоны
+  columns:
+    - title: Имя
+      path: /metadata/name
+```
+
+Обязательны groupPath, itemsPath, idPath, usedPath и hardPath. id/title/metric/
+scope/unit читаются относительно элемента itemsPath, остальные пути — относительно
+исходного CR. Карты hard/used/reserved индексируются по id. metric по умолчанию
+равен id, scope без значения отображается как «Всего». Группировка metric не
+смешивает разные CR или namespace. Общий показатель должен храниться отдельным
+элементом; renderer не складывает пересекающиеся области и не конвертирует единицы.
+
+Layout предоставляет поиск, фильтр областей, сортировку и сворачиваемые группы
+с/без потребления. nearPercent задаёт порог «Почти закончились» (по умолчанию
+80%, допустимо 1–100); индикатор учитывает резерв. conditionsPath требует
+conditionType. При несовпадении observedGeneration с metadata.generation или
+условии не True факт помечается неактуальным. Отсутствующий факт остаётся «—».
+Фильтр области сохраняет общий показатель и показатели без региональной разбивки.
+
+В этом layout selectable не поддерживается. Он не добавляет запросов увеличения,
+прав изменения или нового backend API. Работают прежние discovery, watch и RBAC
+пользователя. Настройка только JSON Schema не создаёт расчёт или enforcement:
+источник обязан сам публиковать достоверные usage/limit maps.
