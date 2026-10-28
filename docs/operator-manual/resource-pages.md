@@ -502,3 +502,40 @@ x-dashboard-form:
 Если справочник изменился, «Обновить данные и расчёт» обновляет версии всех
 выбранных CR и сохраняет остальные поля формы. Объект с другим UID автоматически
 не подставляется: удалённый вариант нужно выбрать заново.
+
+## Иконка перед значением колонки
+
+Добавьте `iconPath` в колонку списка. Это JSON Pointer к изображению в том же
+CR; `iconAltPath` задаёт путь к его текстовой подписи. Например:
+
+```yaml
+x-dashboard-list:
+  sortable: true
+  columns:
+    - title: Имя
+      path: /spec/displayName
+      fallbackPath: /metadata/name
+      renderer: resource-link
+      iconPath: /metadata/annotations/display.example.org~1icon
+      iconAltPath: /metadata/annotations/display.example.org~1source-name
+```
+
+Иконка располагается перед значением; ссылка с UID, дополнительная строка и
+сортировка работают как прежде. Допустимы относительные пути, HTTPS и base64
+изображения PNG/JPEG/WebP/SVG — как у каталога выбора. HTML и JavaScript не
+исполняются; HTTPS не передаёт Referer. Для пустого, недопустимого или
+недоступного изображения показывается нейтральный значок. Без `iconPath`
+колонка сохраняет прежний вид.
+
+Чтобы показать образ, шаблон или другой выбранный источник, скопируйте его
+иконку в основной CR через `create.selections[].mappings`. Источником остаётся
+доверенный GVK: сервер повторно читает выбранный объект и проверяет UID,
+resourceVersion и селекторы. Например, mapping:
+
+```yaml
+- fromSelected: /metadata/annotations/catalog.example.org~1icon
+  toObject: /metadata/annotations/display.example.org~1icon
+```
+
+Иконка хранится как снимок выбранного источника. Поэтому смена оформления или
+удаление записи каталога не меняют обозначение ранее созданного ресурса.
