@@ -83,6 +83,71 @@ oc --context YOUR_CONTEXT annotate namespace project-a quotas.gatorstack.dev/quo
 
 ## Изменение лимитов и правил
 
+### Квота ConfigMap
+
+Для подсчёта ConfigMap выдайте `sourceRBAC` чтение `configmaps` в core API group:
+
+```yaml
+sourceRBAC:
+  - apiGroups: ['']
+    resources: [configmaps]
+```
+
+Следующий `configmap-template.yaml` создаёт шаблон и namespace
+`quota-configmaps-demo` с лимитами 4 объекта и 8 ключей. После установки версии
+0.2.0 или новее сохраните манифест:
+
+```yaml
+# Apply the template before enabling copy-once on the namespace.
+apiVersion: quotas.gatorstack.dev/v1alpha1
+kind: ClusterQuotaTemplate
+metadata:
+  name: configmap-capacity
+spec:
+  namespaceSelector:
+    matchLabels:
+      kubernetes.io/metadata.name: quota-configmaps-demo
+  quotaSpec:
+    rules:
+      - name: configmaps
+        apiVersion: v1
+        kind: ConfigMap
+        expression: count(.)
+        hard: '4'
+        message: Превышен лимит количества ConfigMap в namespace
+      - name: keys
+        apiVersion: v1
+        kind: ConfigMap
+        expression: sum(count(.data) + count(.binaryData))
+        hard: '8'
+        message: Превышен лимит суммарного количества ключей ConfigMap в namespace
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: quota-configmaps-demo
+  annotations:
+    quotas.gatorstack.dev/use-quotas: 'true'
+```
+
+Примените его и дождитесь копирования:
+
+```sh
+oc --context YOUR_CONTEXT apply -f configmap-template.yaml
+oc --context YOUR_CONTEXT wait namespace/quota-configmaps-demo \
+  --for=jsonpath='{.metadata.annotations.quotas\.gatorstack\.dev/quota-copied}'=true --timeout=120s
+oc --context YOUR_CONTEXT -n quota-configmaps-demo get quota configmap-capacity -o yaml
+```
+
+Стандартный `kube-root-ca.crt` входит в оба лимита: обычно начальный факт 1/4
+объекта и 1/8 ключа. Число ключей не ограничивает размер значений в байтах.
+Лимиты применяются к namespace, без переноса остатка между namespace.
+При обновлении с 0.1 остановите записи и дождитесь пустых QuotaLedger перед
+сменой версии: 0.2 расширяет digest подтверждения на поля вне spec. Не удаляйте
+неизвестные резервы; сначала разберите их по процедуре восстановления ниже.
+
+### Обновление действующей квоты
+
 Лимит находится в `Quota.spec.rules[].hard`, сообщение — в `message`.
 После изменения `status.observedGeneration` должен совпасть с generation,
 `Ready=True`. Снижение hard ниже факта даёт OverLimit=True и available=0;
