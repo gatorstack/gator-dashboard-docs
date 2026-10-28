@@ -12,7 +12,7 @@
 
 ```sh
 oc --context YOUR_CONTEXT -n project-a get quotas.quotas.gatorstack.dev
-oc --context YOUR_CONTEXT -n project-a get quota compute-capacity -o yaml
+oc --context YOUR_CONTEXT -n project-a get quota compute -o yaml
 ```
 
 Пример `status` при лимите 100 CPU:
@@ -49,7 +49,7 @@ data и binaryData. Например, два ConfigMap с 2 и 3 ключами 
 
 Страница показывает группы **С потреблением** и **Без потребления**. В каждой
 группе можно свернуть или открыть список показателей. Под названием видны
-технический ID и имя Quota; нажатие на название открывает правила и состояние.
+технический ID одной строкой: имя Quota + точка + metric (например, compute.vcpu); нажатие на название открывает правила и состояние.
 Поиск работает по названию, ID, имени Quota и группе. Заголовки столбцов
 позволяют сортировать по названию или доле занятого лимита.
 

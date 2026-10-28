@@ -185,6 +185,11 @@ Copy-once остаётся прежним: изменение ClusterQuotaTempla
 name правил. Новые региональные правила добавляйте с уникальными name;
 факт появится под этими ключами status после успешной сверки.
 
+Имя Quota в Kubernetes неизменяемо. Для переименования создайте новую Quota
+с прежним spec и происхождением нового шаблона, дождитесь Ready и пустого
+ledger, затем удалите прежнюю. Так прежние лимиты продолжают действовать
+до готовности замены. Например, имя compute даёт технический ID compute.vcpu.
+
 ### Обновление действующей квоты
 
 Лимит находится в `Quota.spec.rules[].hard`, сообщение — в `message`.
@@ -220,7 +225,7 @@ access ReadOnly. List/Detail ProductPage читают status.hard/used/reserved/
 ```sh
 oc --context YOUR_CONTEXT -n gator-quotas get deployment,pods,service,certificate
 oc --context YOUR_CONTEXT -n gator-quotas logs deployment/gator-quotas --tail=100
-oc --context YOUR_CONTEXT -n project-a get quota compute-capacity -o yaml
+oc --context YOUR_CONTEXT -n project-a get quota compute -o yaml
 oc --context YOUR_CONTEXT -n project-a get quotaledger admission -o yaml
 ```
 

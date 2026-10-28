@@ -305,3 +305,7 @@ conditionType. При несовпадении observedGeneration с metadata.ge
 прав изменения или нового backend API. Работают прежние discovery, watch и RBAC
 пользователя. Настройка только JSON Schema не создаёт расчёт или enforcement:
 источник обязан сам публиковать достоверные usage/limit maps.
+
+Технический ID строки выводится одной строкой в формате `metadata.name.metric`,
+например `compute.vcpu`. Полный ID поддерживается поиском; длинные ID сокращаются
+в колонке, полное значение доступно в подсказке.
