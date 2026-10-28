@@ -406,3 +406,95 @@ x-dashboard-enumLabels:
 
 Для каталожных ресурсов используйте lookup по GVK. Подписи enum предназначены
 для фиксированных значений протокола, а не для подмены списка ресурсов.
+
+## Каталог карточек из JSON Schema
+
+Поле с `x-dashboard-widget: catalog` выбирает один Kubernetes CR и показывает
+его название, иконку, группу, вариант и описание. Источник и пути отображения
+описываются прямо в канонической схеме операции. Например:
+
+```yaml
+image:
+  type: object
+  title: Образ
+  x-dashboard-widget: catalog
+  x-dashboard-lookup: images
+  x-dashboard-dependsOn: [cloud]
+  x-dashboard-catalog:
+    target:
+      apiVersion: images.openstack.m.crossplane.io/v1alpha1
+      kind: ImageV2
+      scope: Namespaced
+      namespacePolicy: Fixed
+      namespace: infra-catalog
+    labelSelector:
+      matchLabels:
+        catalog.example.org/published: "true"
+    selectorBindings:
+      - {label: catalog.example.org/cloud, fromInput: /cloud}
+    option:
+      labelPath: /metadata/annotations/catalog.example.org~1title
+      descriptionPath: /metadata/annotations/catalog.example.org~1description
+      iconPath: /metadata/annotations/catalog.example.org~1icon
+      groupPath: /metadata/annotations/catalog.example.org~1family
+      variantPath: /metadata/annotations/catalog.example.org~1version
+  additionalProperties: false
+  required: [name, namespace, uid, resourceVersion]
+  properties:
+    name: {type: string, minLength: 1}
+    namespace: {type: string, minLength: 1}
+    uid: {type: string, minLength: 1}
+    resourceVersion: {type: string, minLength: 1}
+```
+
+Поменяйте GVK и пути для любого другого каталога: моделей, баз данных, тарифов
+или шаблонов. Для cluster-scoped GVK укажите `scope: Cluster`, уберите namespace
+и namespacePolicy, а также свойство namespace из identity. Для ресурсов проекта
+используйте `namespacePolicy: CurrentProject` без фиксированного namespace.
+Discovery проверяет фактический scope и поддерживаемые операции.
+
+Вместо `target` можно указать `resourceRef: {name: catalog-resource}` для уже
+настроенного ProductResource. Два источника одновременно запрещены. ID lookup
+должен быть уникален: не дублируйте его другой конфигурацией в `spec.lookups`.
+Старые `spec.lookups` продолжают работать. В `create.selections` укажите тот же
+`lookupRef: images` и mappings из выбранного CR в создаваемый ресурс.
+
+`option` принимает JSON Pointer на строки, включая аннотации с экранированием
+`/` как `~1`. Только эти значения и identity уходят в браузер. Без labelPath
+или при отсутствии поля используется metadata.name; без иконки — нейтральный
+значок. Иконка — относительный путь, HTTPS URL или base64 data URI изображения
+PNG/JPEG/WebP/SVG. HTML и JavaScript не исполняются; для HTTPS не передаётся Referer.
+Одинаковые группы объединяют варианты в разделе каталога. Каждый вариант
+выбирает конкретный CR, а не строку из enum. Поиск по названию, описанию,
+группе и варианту находится внутри раскрытого каталога.
+
+Источник читается с правами пользователя. Сервер повторно проверяет namespace,
+UID, resourceVersion, labelSelector, selectorBindings и conditions при заказе
+и предбиллинге. Клиент не может передать другой GVK или дополнительные поля CR.
+Метки фильтрации не заменяют Kubernetes RBAC.
+
+## Секции заказа и метки
+
+Задайте `x-dashboard-form.layout: sections`, чтобы вывести группы с отдельными
+заголовками и разделителями без общей карточки и повторного названия формы.
+Порядок и состав определяет `groups`; поля, не попавшие в группы, сохраняются.
+Например, общие сведения и расположение разделяются независимо от GVK:
+
+```yaml
+x-dashboard-form:
+  layout: sections
+  groups:
+    - {title: Общая информация, fields: [name, description, tags]}
+    - {title: Расположение, fields: [cloud, zone]}
+```
+
+Для массива строк `key=value` используйте `x-dashboard-widget: tag-map`.
+Редактор добавляет плашки через «Добавить метку». Нажмите плашку для изменения,
+крестик — для удаления. Ключи должны быть непустыми и уникальными; ограничения
+значений, длины и количества задавайте стандартными `items`, `maxItems` и
+`uniqueItems`. Значения хранятся в прежнем массиве, не преобразуются в object.
+Некорректные исходные строки остаются видимыми и требуют исправления.
+
+Все обычные lookup также ищут внутри раскрытого списка. Там же находятся
+пустое состояние, ошибка, повтор загрузки и следующая порция вариантов.
+Поиск не сбрасывает выбранную identity; изменение зависимого поля сбрасывает.
