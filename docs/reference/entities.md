@@ -123,8 +123,10 @@ Inline/configMapRef/resourceSchemaRef — взаимоисключающие и�
 | `spec.selector` | Обязательный фильтр объектов этого описания ресурса |
 | `spec.create.inputSchema` | Canonical JSON Schema заказа, inline либо configMapRef |
 | `spec.create.template`, `mappings` | Базовый CR и перенос полей заказа |
+| `mappings[].toObject: /metadata/labels` или `/metadata/annotations` | Целая карта строк, только при создании; все ключи и значения проверяются по правилам Kubernetes |
 | `spec.create.nameFromInput` | До 8 строковых JSON pointers input, формирующих стабильное имя в проекте и ProductResource |
 | `spec.delete.title`, `confirmation` | Подпись обычного DELETE и текст подтверждения |
+| `spec.delete.requireEmptyRelations[]` | relationRef/message: перед DELETE повторно прочитать связь с правами пользователя; непустая связь или ошибка чтения блокируют удаление |
 | `spec.relations` | Именованные связи: pageRef на List того же продукта/проекта, selectorBindings и matchFields из исходника |
 | `spec.lookups` | Именованные источники вариантов: resourceRef, labelSelector, подписи |
 | `spec.create.selections` | Проверка выбранных ссылок и mapping полей выбранного объекта |
@@ -141,6 +143,7 @@ Inline/configMapRef/resourceSchemaRef — взаимоисключающие и�
 | `spec.edit.contextMappings` | fromObject/toInput: доверенный контекст из существующего CR |
 | `spec.edit.preconditions`, `spec.actions[].preconditions` | path/values/message, необязательные whenChanged пути spec |
 | `spec.lookups.*.conditions` | Доступность варианта: path/values/message, conditionType для именованного condition |
+| `preconditions[].operator: Empty` | Проверка отсутствующей/null/пустой коллекции без values; скаляры и непустые массивы/объекты не проходят |
 | `spec.outputs` | Именованные пути к результатам основного CR |
 | `spec.execution.mode` | Direct; Gated блокируется до подключения runtime |
 
@@ -150,7 +153,7 @@ namespace и namespacePolicy отсутствуют. Фактический scop
 смена поля в ProductResource не меняет область Kubernetes-ресурса.
 
 Один Product/iaas содержит описания iaas-instances, iaas-disks,
-iaas-snapshots, iaas-ssh-keys, iaas-disk-attachments и при необходимости read-only iaas-flavors.
+iaas-snapshots, iaas-ssh-keys, iaas-disk-attachments, iaas-placement-groups и при необходимости read-only iaas-flavors.
 ProductResource — описание типа, не дополнительный CR на каждый экземпляр VM.
 Удаление конфигурации каталога не означает удаление управляемой инфраструктуры.
 Операции создают целевой CR с правами пользователя. Generic CEL state, расширенные relations,
