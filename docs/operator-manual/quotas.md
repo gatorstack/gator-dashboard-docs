@@ -221,9 +221,13 @@ get/list/watch Quota в его декларативную конфигураци
 
 Home package Gator Products использует обычный ProductResource с target
 `quotas.gatorstack.dev/v1alpha1/Quota`, scope Namespaced/CurrentProject и
-access ReadOnly. List/Detail ProductPage читают status.hard/used/reserved/available
-через JSON Schema. API запросы и watch выполняются с токеном пользователя.
-Установка webhook не требует отдельного API в ядре Dashboard.
+access ReadOnly. List ProductPage показывает план, факт и резервы из status
+через JSON Schema. Показатели отображаются обычным текстом без переходов в Quota.
+У List не задаются x-dashboard-detail и x-dashboard-links.detailPageRef;
+отдельная Detail ProductPage не устанавливается. API запросы и watch выполняются
+с токеном пользователя. Подробные правила и состояние доступны через Kubernetes
+API; команды приведены ниже. Установка webhook не требует отдельного API в ядре
+Dashboard.
 
 ## Наблюдение и восстановление
 
