@@ -103,3 +103,10 @@ rbac:
 
 Бизнес-правила описывает [BillingBinding](billing-binding.md). Secret адаптера
 отдельный от административного bearer Cost; он не открывает административный API.
+
+## История действий
+
+`history.enabled` включает producer Dashboard (по умолчанию false).
+`history.policyRef` выбирает HistoryPolicy (по умолчанию dashboard).
+Оператор и его chart устанавливаются отдельно; параметры описаны в
+[руководстве Gator History](../operator-manual/history.md).
