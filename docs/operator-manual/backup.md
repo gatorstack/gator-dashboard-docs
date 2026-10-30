@@ -63,6 +63,44 @@
 в нужной зоне; разрешение на управление самой зоной не даёт доступа к записям.
 После выпуска сертификатов проверьте discovery Dex и новый вход пользователя.
 
+## Ceph RGW как отдельный S3 backend
+
+Ceph Object Gateway предоставляет S3 API поверх RADOS. Храните backend будущего
+S3-продукта отдельно от служебного хранилища Cinder backups: у них разные
+пользователи, жизненный цикл и требования к сохранности данных. Развёртывание
+RGW само по себе не добавляет продукт, формы или биллинг S3 в Dashboard.
+
+Для конфигурации backend задайте realm, zonegroup, zone и публичное имя S3 API.
+У endpoint должны работать HTTPS и выбранный стиль адресации бакетов.
+Virtual-host style требует wildcard DNS и сертификат для `*.s3.example.org`;
+reverse proxy должен сохранять Host и путь запроса для проверки SigV4.
+Для multipart uploads отключите буферизацию тела и задайте подходящий лимит
+размера; не отключайте проверку сертификата в клиенте.
+
+Создавайте development identity с обычными S3 keys. Admin capabilities нужны
+отдельному доверенному исполнителю управления пользователями и бакетами;
+не выдавайте клиентам CephX admin keyring. Сохраняйте ключи в защищённом профиле
+клиента или Secret и не включайте их в манифесты каталога.
+
+На Ceph host проверьте:
+
+```sh
+sudo cephadm shell -- ceph -s
+sudo cephadm shell -- ceph osd stat
+sudo cephadm shell -- ceph orch ps --daemon-type rgw --refresh
+sudo cephadm shell -- ceph df detail
+```
+
+Приёмка S3 включает PUT/GET/HEAD/LIST, range-запросы, multipart, versioning,
+presigned URL и отказы anonymous/чужой identity. После перезагрузки проверьте
+здоровье Ceph и SHA256 ранее записанного объекта через тот же HTTPS endpoint.
+Профиль с несколькими OSD внутри одной VM подходит для разработки; копии на
+одной VM не обеспечивают независимые failure domains. Репликация Ceph не
+заменяет внешнюю резервную копию.
+
+Официальные инструкции: [установка cephadm](https://docs.ceph.com/en/tentacle/cephadm/install/),
+[развёртывание RGW](https://docs.ceph.com/en/tentacle/cephadm/services/rgw/).
+
 ## Восстановить биллинг
 
 Остановите начисляющие collectors/workers и jobs. Восстановите согласованное
