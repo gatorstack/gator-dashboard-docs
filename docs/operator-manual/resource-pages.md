@@ -624,3 +624,55 @@ resourceVersion и селекторы. Например, mapping:
 
 Иконка хранится как снимок выбранного источника. Поэтому смена оформления или
 удаление записи каталога не меняют обозначение ранее созданного ресурса.
+
+## Выдача данных из connection Secret
+
+В ProductResource объявите Secret output. Namespace берётся из основного CR;
+caller должен иметь get этого Secret, а ownerReference Secret должен указывать
+на точные apiVersion/kind/name/UID основного CR:
+
+```yaml
+outputs:
+  - id: credentials
+    secretRef:
+      namePath: /spec/writeConnectionSecretToRef/name
+      fields:
+        - id: access_key_id
+          key: aws_access_key_id
+          title: Access key ID
+        - id: secret_access_key
+          key: aws_secret_access_key
+          title: Secret access key
+```
+
+В JSON Schema Detail добавьте секцию. Конкретные Secret keys и пути остаются
+в манифесте продукта, renderer подходит любому установленному GVK:
+
+```yaml
+x-dashboard-detail:
+  sections:
+    - title: Данные подключения
+      renderer: connection-secret
+      outputRef:
+        name: credentials
+```
+
+Чтение выполняется явно через POST
+`resources/<name>/outputs/<output-id>/reveal` с UID основного CR. Вход не содержит
+произвольных Secret name/namespace/keys. Обычные list/detail не получают Secret
+values. Ответ имеет no-store, а UI очищает значения при закрытии Dialog.
+История access/reveal содержит actor и identity CR, без содержимого Secret.
+Подробный пример применения: [S3-продукт](s3.md).
+
+## Завершающие mappings
+
+`ResourceOperation.finalMappings` берут fromObject из сформированного CR после
+обычных mappings, selections и назначения metadata.name/namespace. Они могут
+писать spec и разрешённые labels/annotations, но не менять identity/status/owners.
+Для edit каждый целевой путь явно включается в mutablePaths. Изменение формата
+не расширяет права caller и не позволяет выбирать произвольный ProviderConfig.
+
+`JSONString` сериализует типизированное значение; `ParseJSON` разбирает JSON
+строку до 64 KiB. Строковые prefix/suffix и prefixFromObject позволяют составить
+внешнее имя из доверенного каталога. Эти преобразования полезны для API, где
+политика передаётся JSON строкой, и для стабильных имён выходных Secret.

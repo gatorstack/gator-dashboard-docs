@@ -285,10 +285,17 @@ s3.put_object(
 AWS class names; проверьте используемый клиент перед выдачей услуги.
 
 В текущем upstream Bucket CR нет поля LocationConstraint. Через User CR можно
-задать `forProvider.defaultPlacement: hot` или `cold`, а также
-`defaultStorageClass`, затем использовать credentials этого пользователя в
+задать `forProvider.defaultPlacement: hot` или `cold`, затем использовать credentials этого пользователя в
 ProviderConfig для создания бакетов. Для выбора placement у каждого отдельного
 бакета через один ProviderConfig потребуется расширение upstream API; такого
 поля в опубликованном CRD сейчас нет.
 
+`defaultStorageClass` присутствует только в `status.atProvider` как наблюдаемое
+значение. В `spec.forProvider` такого поля нет; не добавляйте его в manifest.
+
 Подробнее: [Ceph placement и storage classes](https://docs.ceph.com/en/tentacle/radosgw/placement/).
+
+Для account-owned бакетов текущий upstream некорректно передаёт account owner
+как `uid` при установке индивидуальной `bucketQuota`: на Ceph Tentacle это
+возвращает `NoSuchKey`. Не задавайте это необязательное поле таким бакетам.
+Квоты обычных user-owned бакетов и квоты аккаунта — отдельные операции.

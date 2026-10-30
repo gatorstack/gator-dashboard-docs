@@ -23,7 +23,7 @@ Chart доступен в каталоге `gator-dashboard/charts/gator-dashboa
 Примеры используют namespace `gator-dashboard`, проект `team-a` и домен
 `dashboard.example.org`. Замените домен, Ingress class и файлы сертификата своими.
 Для примеров каталога ролей используется образ
-`valerahex/gator-dashboard:0.3.4`.
+`ghcr.io/gatorstack/gator-dashboard:0.11.1`.
 При выборе другой поставки используйте согласованные версии chart и образа.
 
 Консоль устанавливается без облачных продуктов. Пакеты каталога и provider runtime
@@ -55,14 +55,28 @@ oc --context "$GATOR_CONTEXT" -n gator-dashboard create secret tls dashboard-tls
 соответствовать DNS-имени консоли. Вместо ручного Secret можно настроить выпуск
 через cert-manager — [Ingress и TLS](ingress-tls.md).
 
+Образ поставляется через приватный GHCR GatorStack. Подготовьте Docker config
+с доступом `read:packages` и создайте pull Secret из защищённого файла:
+
+```sh
+oc --context "$GATOR_CONTEXT" -n gator-dashboard create secret generic gator-ghcr \
+  --type=kubernetes.io/dockerconfigjson \
+  --from-file=.dockerconfigjson=/secure/docker/config.json
+```
+
+Не добавляйте токен в values или Git. Для другого namespace создайте pull Secret
+в нём; ссылка imagePullSecrets относится к namespace Deployment.
+
 ## 3. Создайте файл настроек
 
 Сохраните как `dashboard-values.yaml` рядом с полученным комплектом chart:
 
 ```yaml
 image:
-  repository: valerahex/gator-dashboard
-  tag: 0.3.4
+  repository: ghcr.io/gatorstack/gator-dashboard
+  tag: 0.11.1
+imagePullSecrets:
+  - name: gator-ghcr
 replicaCount: 1
 cookieSecure: true
 iam:

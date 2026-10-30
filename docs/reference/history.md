@@ -35,3 +35,8 @@ retentionDays. Права чтения проверяются от пользо�
 Декларативные расширения: `ProductResource.spec.history.fields`,
 `x-dashboard-view: activity-history` и Detail `renderer: activity-history`.
 Подробнее — [руководство администратора](../operator-manual/history.md).
+
+Операция `access` используется для явной выдачи connection credentials.
+`action: reveal:<output id>` обозначает output ProductResource, а target —
+основной CR. Secret data, Secret reference и значения полей в запись не включаются.
+Итог Accepted подтверждает успешный Kubernetes GET, а не создание нового ключа.
