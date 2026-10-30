@@ -111,6 +111,13 @@ List/Create не требуют существующего экземпляра;
 Inline/configMapRef/resourceSchemaRef — взаимоисключающие источники schema.
 Для mutation-форм используется общий источник со схемой серверной операции.
 
+В `x-dashboard-detail.sections[]` секции `connection-secret` и `related-resources`
+поддерживают `outputRef.name` — ID объявленного Secret output.
+`outputRef.presentation: inline` читает его при открытии вкладки; `dialog`
+(по умолчанию) — по кнопке. `outputRef.visibleFields` перечисляет ID полей,
+показываемых открыто; остальные маскированы. Для related-resources output
+принадлежит целевому ProductResource, а `fields` описывают поля каждой записи.
+
 ## ProductResource
 
 **Область:** namespace каталога. Группа/версия — `dashboard.gatorstack.dev/v1alpha1`.
@@ -144,7 +151,8 @@ Inline/configMapRef/resourceSchemaRef — взаимоисключающие и�
 | `spec.edit.preconditions`, `spec.actions[].preconditions` | path/values/message, необязательные whenChanged пути spec |
 | `spec.lookups.*.conditions` | Доступность варианта: path/values/message, conditionType для именованного condition |
 | `preconditions[].operator: Empty` | Проверка отсутствующей/null/пустой коллекции без values; скаляры и непустые массивы/объекты не проходят |
-| `spec.outputs` | Именованные пути к результатам основного CR |
+| `spec.outputs` | Именованные пути либо Secret outputs основного CR |
+| `spec.outputs[].secretRef` | namePath в основном CR и allowlist fields (id/key/title); Secret того же namespace с owner UID основного CR |
 | `spec.execution.mode` | Direct; Gated блокируется до подключения runtime |
 
 Для namespaced target выбирается `namespacePolicy: CurrentProject` либо
