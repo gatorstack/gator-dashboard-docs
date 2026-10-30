@@ -101,6 +101,56 @@ presigned URL и отказы anonymous/чужой identity. После пере
 Официальные инструкции: [установка cephadm](https://docs.ceph.com/en/tentacle/cephadm/install/),
 [развёртывание RGW](https://docs.ceph.com/en/tentacle/cephadm/services/rgw/).
 
+### Просмотр бакетов через Ceph Dashboard
+
+Ceph Dashboard работает как модуль `ceph-mgr` на Ceph host и подключается к RGW.
+Его установка не требует запуска Ceph или отдельного UI workload в Kubernetes.
+В меню **Object Gateway → Buckets** доступны список и параметры бакетов,
+в **Users** — пользователи RGW. Это самостоятельная административная консоль
+Ceph; роли и вход Gator Dashboard к ней не применяются.
+
+Для лабораторного доступа только через VPN задайте приватный адрес Ceph host
+и отдельный HTTP-порт. Замените пример адресом своей VM:
+
+```sh
+CEPH_DASHBOARD_ADDRESS=10.0.0.24
+sudo cephadm shell -- ceph config set mgr mgr/dashboard/server_addr "$CEPH_DASHBOARD_ADDRESS"
+sudo cephadm shell -- ceph config set mgr mgr/dashboard/server_port 8081
+sudo cephadm shell -- ceph config set mgr mgr/dashboard/ssl false
+sudo cephadm shell -- ceph mgr module enable dashboard
+sudo cephadm shell -- ceph dashboard set-rgw-credentials
+sudo cephadm shell -- ceph mgr services
+```
+
+Настройте учётную запись перед предоставлением доступа. По умолчанию Dashboard
+использует HTTPS; для доступа вне изолированного VPN установите доверенный
+сертификат и сохраните TLS включённым. Пример выше явно отключает TLS только
+для лабораторного профиля. Не публикуйте HTTP Dashboard в интернет. Если модуль
+был включён до изменения адреса или SSL, перезапустите только модуль Dashboard:
+
+```sh
+sudo cephadm shell -- ceph mgr module disable dashboard
+sudo cephadm shell -- ceph mgr module enable dashboard
+```
+
+Подготовьте пароль в файле `/root/ceph-dashboard-password` на Ceph host с правами
+0600. Учётную запись создают с явно выбранной ролью:
+
+```sh
+sudo cephadm shell --mount /root/ceph-dashboard-password:/run/dashboard-password \
+  -- ceph dashboard ac-user-create admin -i /run/dashboard-password administrator
+sudo rm /root/ceph-dashboard-password
+```
+
+Файл на host необходимо явно передать в container через `cephadm shell --mount`;
+не передавайте пароль аргументом команды. Для просмотра можно назначить роль
+`read-only`, для администрирования — `administrator`. Профиль входа храните
+отдельно от Git и резервных копий с обычным доступом; JWT и значения S3 keys
+не включайте в журналы. Проверяйте вход и загрузку списка бакетов, а также
+доступность существующего S3 endpoint после включения UI.
+
+Подробнее: [Ceph Dashboard](https://docs.ceph.com/en/tentacle/mgr/dashboard/).
+
 ## Восстановить биллинг
 
 Остановите начисляющие collectors/workers и jobs. Восстановите согласованное
