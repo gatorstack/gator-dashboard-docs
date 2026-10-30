@@ -701,3 +701,37 @@ path повторно не выводится. Остальные identifiers, �
 
 Крошка карточки использует `x-dashboard-links.listPageRef`, если он объявлен.
 Для IAM сохраняется выбранная область project/cluster.
+
+
+### Приоритет ошибок в состоянии ресурса
+
+Для колонок, полей и `header.status`, читающих массив conditions, можно задать
+`conditionRules`. Первое совпавшее правило определяет отображаемое значение;
+без совпадений используется обычный `conditionType`. Пример:
+
+```yaml
+path: /status/conditions
+renderer: badge
+conditionType: Ready
+conditionRules:
+- type: LastAsyncOperation
+  status: 'False'
+  messageContains: 'BucketAlreadyExists:'
+  value: Конфликт имени
+- type: LastAsyncOperation
+  status: 'False'
+  value: Ошибка
+labels:
+  'True': Готово
+  'False': Подготовка
+```
+
+`type` и `status` обязательны. Дополнительный `reason` сравнивается точно,
+`messageContains` ищет буквальную подстроку с учётом регистра в том же condition.
+`value` задаёт подпись для renderer; полный текст ошибки можно оставить в
+секции `conditions` на вкладке диагностики. Эти правила только отображают
+состояние и не меняют объект Kubernetes.
+
+При конфликте имени форма сообщает, что ресурс уже существует в текущем
+проекте. Введённые значения и сообщение сохраняются при правках и обновлении
+каталогов выбора. Повторная отправка или сброс очищают прошлую ошибку.

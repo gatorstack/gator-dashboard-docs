@@ -67,7 +67,7 @@ kind: Provider
 metadata:
   name: provider-radosgw
 spec:
-  package: ghcr.io/gatorstack/provider-radosgw:v0.1.0-rc.11
+  package: ghcr.io/gatorstack/provider-radosgw:v0.1.0-rc.15
   packagePullSecrets:
     - name: provider-radosgw-pull
   runtimeConfigRef:
@@ -299,3 +299,24 @@ ProviderConfig для создания бакетов. Для выбора place
 как `uid` при установке индивидуальной `bucketQuota`: на Ceph Tentacle это
 возвращает `NoSuchKey`. Не задавайте это необязательное поле таким бакетам.
 Квоты обычных user-owned бакетов и квоты аккаунта — отдельные операции.
+
+## Безопасность первого наблюдения
+
+Новый CR без `crossplane.io/external-name` сначала проходит Create upstream API.
+Read по параметрам spec не используется как неявный импорт. Это общее правило
+для всех 29 видов в обоих scope. Для Bucket S3 API проверяет владельца: занятое
+другим аккаунтом имя даёт BucketAlreadyExists в conditions, без ложного Ready.
+
+Для намеренного импорта оператор задаёт внешний ID и managementPolicies: [Observe].
+При восстановлении существующих CR сохраняйте external-name и connection Secret.
+Идентификатор позволяет продолжить Read; оператор должен отдельно проверить
+владение и соответствие подключения. Глобальные Admin Ops permissions остаются
+глобальными. Политики, CORS и другие настройки сохраняют штатную upsert-семантику
+Create и проверки доступа backend; один внешний объект управляется одним CR.
+
+Ошибка Create не считается подтверждением владения: частичное Terraform state
+не превращается в external-name. Это также защищает IAM-пользователей, группы
+и роли при EntityAlreadyExists. Если сервер создал объект, но затем вернул
+ошибку, проверьте фактический результат и выполните явный import только после
+подтверждения принадлежности. Настройки вроде CORS/policies используют
+авторизованный Create/upsert; один CR должен владеть одной такой конфигурацией.
