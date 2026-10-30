@@ -676,3 +676,28 @@ values. Ответ имеет no-store, а UI очищает значения п
 строку до 64 KiB. Строковые prefix/suffix и prefixFromObject позволяют составить
 внешнее имя из доверенного каталога. Эти преобразования полезны для API, где
 политика передаётся JSON строкой, и для стабильных имён выходных Secret.
+
+## Техническое имя над заголовком
+
+С версии 0.12.0 `x-dashboard-detail.header.namePath` задаёт необязательный
+JSON Pointer к строке над названием ресурса:
+
+```yaml
+x-dashboard-detail:
+  header:
+    namePath: /metadata/name
+    titlePath: /metadata/annotations/example.org~1title
+  sections:
+    - title: Основное
+      renderer: fields
+      paths: [/metadata/namespace]
+```
+
+Имя выводится небольшим текстом приглушённого цвета и переносится на узком
+экране. `titlePath` продолжает задавать заголовок и хлебные крошки. Если значение
+namePath отсутствует или не строка, строка имени скрыта. Identifier с тем же
+path повторно не выводится. Остальные identifiers, например внешний ID,
+сохраняются. Возврат к списку выполняется через крошки или меню продукта.
+
+Крошка карточки использует `x-dashboard-links.listPageRef`, если он объявлен.
+Для IAM сохраняется выбранная область project/cluster.
