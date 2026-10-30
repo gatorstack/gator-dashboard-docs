@@ -239,3 +239,10 @@ openstack --os-cloud region-admin volume backup restore BACKUP_ID RESTORED_VOLUM
 
 Параметры драйвера описаны в [документации Cinder S3](https://docs.openstack.org/cinder/2025.2/configuration/block-storage/backup/s3-backup-driver.html),
 права S3 — в [SeaweedFS S3 Credentials](https://github.com/seaweedfs/seaweedfs/wiki/S3-Credentials).
+
+### Декларативное управление RGW
+
+Для управления внешним RGW через Crossplane см. [установку провайдера RadosGW](radosgw-provider.md).
+Он предоставляет IAM/S3/SNS CRD и не требует размещать Ceph или RGW в Kubernetes.
+Бакеты и настройки, которыми владеет контроллер, изменяйте через CR: ручные
+изменения в Ceph Dashboard могут быть исправлены при следующем reconciliation.
