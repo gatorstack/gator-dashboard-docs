@@ -834,3 +834,37 @@ boolean, byte-size для числа байтов с x-dashboard-units (title/mu
 `x-dashboard-visible-when: {path: /enabled, value: true}` скрывает поле без потери
 его значения. Группа может задать showTitle: false и separator: false, например
 для поля имени перед основными секциями.
+
+
+## Обрамление секций и связанные формы
+
+Установите `x-dashboard-form.sectionStyle: bordered`, чтобы полноэкранная форма
+обрамляла каждый блок groups. Диалоги и вложенные объекты сохраняют компактность.
+Для Edit можно задать `submitLabel` и `successNavigation: stay`: после сохранения
+обновляются данные основного CR и показывается подтверждение на той же странице.
+
+`x-dashboard-form.relatedForms` содержит `title`, `relationRef`, `createPageRef`
+и `editPageRef`. Это ссылки на canonical Action-страницы: CreateResource из
+основного CR для отсутствующей связи и UpdateResource связанного CR для одной
+найденной записи. Сохраняет каждый CR отдельная кнопка. Ошибка чтения и несколько
+результатов блокируют форму. Чтение relation проверяет CurrentProject и UID
+основного объекта; запись проходит штатные проверки caller/RBAC/UID/RV.
+Не вкладывайте relatedForms рекурсивно. Дополнительные `guard` (ResourceField),
+`guardMessage` и `fallbackPageRef` позволяют открыть полный редактор для данных,
+которые не соответствуют упрощённой форме. Серверный precondition также обязателен.
+
+`jsonMatch` в поле отображения или initialMappings проверяет значение JSON Schema:
+`schema`, необязательные `parseJSON`, `supportedSchema` и `bindings`.
+Bindings подставляют значения текущего CR в schema по fromObject/toObject;
+prefix/suffix позволяют формировать идентификаторы. Неопознанные или некорректные
+документы дают неизвестное значение, а не false. Для поля можно задать emptyText.
+`operator: JSONSchema` с jsonMatch в preconditions выполняет такую же серверную
+проверку перед записью. Это декларативная проверка JSON, без выполнения скриптов.
+
+Mappings принимают `value` для неизменяемого шаблона значения; каждая операция
+получает собственную копию. `edit.initialMappings` имеют приоритет над обратным
+чтением write mappings. `valueWhen: {path, value?, schema?, fallbackPath?}` и defaultValue
+задают условное начальное/отображаемое значение. Renderer `bytes` форматирует
+число байтов. Related-resources с `presentation: fields` показывает fields одной
+связанной записи, при отсутствии — значения для пустого объекта; несколько
+записей и отказы доступа всегда отображаются ошибкой.
