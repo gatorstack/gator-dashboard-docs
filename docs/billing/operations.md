@@ -6,7 +6,7 @@
 
 | Участник | Доступ |
 | --- | --- |
-| Администратор биллинга | Управление CostConfiguration, политиками и тарифами |
+| Администратор биллинга | Управление CostConfiguration, политиками, тарифами и ProjectSubscription |
 | ServiceAccount Gator Cost | Чтение CRD/источников/namespaces, запись служебных checkpoints/Lease и status/projections |
 | Клиент проекта | Create/get/list/watch CostReport, read-only PriceList в своём namespace |
 | Оператор OpenMeter | Административный доступ к native API/финансовым хранилищам |
@@ -42,7 +42,7 @@ Write к status остаётся у контроллера. Разрешение
 oc --context "$GATOR_CONTEXT" get costconfiguration default -o yaml
 oc --context "$GATOR_CONTEXT" get meteringpolicies,metricmeteringpolicies
 oc --context "$GATOR_CONTEXT" get tariffplans
-oc --context "$GATOR_CONTEXT" -n billing-lab get projecttariffplans,pricelists
+oc --context "$GATOR_CONTEXT" -n billing-lab get projecttariffplans,projectsubscriptions,pricelists
 oc --context "$GATOR_CONTEXT" -n gator-cost get deploy,pods,collectorcheckpoints,leases
 oc --context "$GATOR_CONTEXT" -n openmeter get deploy,pods,pvc,cronjobs
 ```
@@ -209,3 +209,18 @@ accepted tariff history, epoch, migration marker и bootstrap metadata. При
 
 KeepAll не делает PVC бесконечным. Планируйте ёмкость, внешние backup и проверку
 restore. Текущие charts с одной репликой хранилищ не являются HA-топологией.
+
+## Включить native назначения
+
+Порядок и полный spec описаны в [ProjectSubscription](subscriptions.md).
+Сохраните backup OpenMeter, дождитесь пустой очереди старого collector и завершения
+scrape/delay при остановленной внешней нагрузке. Создайте будущие назначения
+для всех проектов/семейств, дождитесь Ready и установите ту же subscriptionsFrom.
+На границе проверьте native Subscription.active_from, фазы и service periods
+Charges; при необходимости дождитесь periodic subscription-sync OpenMeter.
+Subscription Ready и отсутствие pending не заменяют проверку финансовых Charges.
+
+Backup должен включать OpenMeter PostgreSQL с Subscriptions/Plans и ClickHouse,
+а также Kubernetes checkpoints/Lease и Redis dedupe. Не меняйте epoch или
+subscriptionsFrom при повторном deployment. Восстанавливайте финансовое состояние
+согласованно с CloudEvents, а не пересозданием отдельных назначений с новым лимитом.

@@ -101,3 +101,9 @@ API, каталог, квоты, биллинг или эксплуатацию,
 Shared PostgreSQL/PVC принадлежит OpenMeter и сохраняется; удаляется только
 старый database после verified archive/cost/S3/restart/replay сверки.
 Не смешивать эти правила с историческими описаниями 0.1–0.6 выше.
+
+Назначения Cost 0.8: ProjectSubscription → OpenMeter Subscription. После immutable
+subscriptionsFrom нет implicit global fallback; native billing worker создаёт
+Charges, collector передаёт subscription_usage. Полный spec/миграция/остаток
+free tier — docs/billing/subscriptions.md. Не описывать выбор плана контроллером
+как рабочую модель после этой границы.

@@ -1,7 +1,7 @@
 # TariffPlan и ProjectTariffPlan
 
 Все денежные ставки задаются decimal-строками в RUB. OpenMeter считает деньги;
-контроллер выбирает неизменяемый тарифный снимок для момента измерения.
+назначенный через ProjectSubscription план закрепляет неизменяемую версию в OpenMeter.
 
 ## Семейство и версии
 
@@ -47,27 +47,27 @@
 | `projectID` | Обязательный billing subject; в проектной модели равен namespace |
 | `globalPlanRef.name` | Обязательный ключ заменяемого семейства |
 
-Проектная версия заменяет **весь** глобальный план своего семейства на период.
+При назначении через ProjectSubscription проектная версия заменяет **весь** набор ставок семейства.
 Если RAM отсутствует в проектном rates, она не наследуется из глобального плана.
 
 ```mermaid
 flowchart TB
-  family["Семейство и момент измерения"] --> privatePlans["Активные планы namespace и projectID"]
-  privatePlans --> hasPrivate{"Есть проектные версии?"}
-  hasPrivate -->|"Да"| choosePrivate["Выбрать проектный набор"]
-  hasPrivate -->|"Нет"| chooseGlobal["Выбрать активные глобальные версии"]
-  choosePrivate --> unique{"Ровно одна версия?"}
-  chooseGlobal --> unique
-  unique -->|"Нет версий"| missing["MissingTariffPlan"]
-  unique -->|"Больше одной"| conflict["TariffConflict"]
-  unique -->|"Одна"| rate["Найти key и проверить unit"]
-  rate --> usage["Снимок ставки для usage"]
+  binding["ProjectSubscription в namespace"] --> native["OpenMeter Subscription"]
+  native --> unique{"Одна активная подписка семейства?"}
+  unique -->|"Нет"| hold["Остановить учёт, сохранить cursor"]
+  unique -->|"Да"| plan["Закреплённая версия Plan и фаза"]
+  plan --> rate["Rate card: key, unit и price"]
+  rate --> usage["Usage для native subscription Charge"]
 ```
 
-Активность учитывает `validFrom ≤ t < validUntil`, время принятия и отзыв версии.
-Новая версия не пересчитывает потребление до принятия. Два глобальных активных
-плана конфликтуют, если не выбран проектный override. Два проектных активных
-плана конфликтуют между собой. Не используйте порядок имён как приоритет.
+Даты назначения и действующий набор ставок принадлежат Subscription OpenMeter.
+`planRef.name` назначения — имя конкретного CR; ссылки политик остаются ключами
+семейства. После включения subscriptionsFrom нет неявного глобального fallback.
+Подробнее: [назначение и смена плана](subscriptions.md).
+
+До subscriptionsFrom исторический выбор учитывает validFrom/validUntil,
+acceptedAt/retiredAt и приоритет полного проектного замещения. Эти правила
+сохраняются для прежних событий и не переписывают назначенную Subscription.
 
 ## Неизменяемость
 
@@ -107,7 +107,7 @@ flowchart TB
 это требует отдельного плана перехода.
 
 При миграции customer metadata хранит остаток первого частичного месяца.
-Native charge использует этот остаток; полностью использованный лимит становится
+Первый native период использует этот остаток; полностью использованный лимит становится
 unit ценой без бесплатного tier. Следующий месяц получает объявленный полный лимит.
 
 ## RateCard: архивный GVK

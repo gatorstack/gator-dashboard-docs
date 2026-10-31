@@ -406,6 +406,48 @@ sourcePermissions:
 Суммы сравнивают с измеренным quantity, не исправляют samples вручную.
 Очищайте только собственные тестовые объекты/бакеты и проверяйте их отсутствие.
 
+## 7. Назначить планы проекту
+
+После принятия обоих планов назначьте их явно. Замените будущую дату своей
+согласованной датой активации и проверьте Ready заранее.
+
+```yaml
+apiVersion: cost.gatorstack.dev/v1alpha1
+kind: ProjectSubscription
+metadata:
+  name: compute
+  namespace: billing-lab
+spec:
+  planRef: {kind: TariffPlan, name: compute-basic-initial}
+  startAt: '2027-01-01T00:00:00Z'
+---
+apiVersion: cost.gatorstack.dev/v1alpha1
+kind: ProjectSubscription
+metadata:
+  name: s3
+  namespace: billing-lab
+spec:
+  planRef: {kind: TariffPlan, name: s3-basic-initial}
+  startAt: '2027-01-01T00:00:00Z'
+```
+
+Для полного проектного override используйте в первом назначении
+`{kind: ProjectTariffPlan, name: compute-project-special}`. Сохраните YAML в
+project-subscriptions.yaml и примените:
+
+```sh
+oc --context "$GATOR_CONTEXT" apply -f project-subscriptions.yaml
+oc --context "$GATOR_CONTEXT" -n billing-lab wait projectsubscription --all \
+  --for=condition=Ready --timeout=120s
+oc --context "$GATOR_CONTEXT" patch costconfiguration default --type=merge \
+  -p '{"spec":{"subscriptionsFrom":"2027-01-01T00:00:00Z"}}'
+```
+
+Граница subscriptionsFrom устанавливается один раз. В существующей установке
+создайте назначения для всех учитываемых проектов/семейств до включения границы.
+Настройка multiple subscriptions и перенос использованного лимита описаны в
+[ProjectSubscription](subscriptions.md).
+
 ## Запрос детализации
 
 Сохраните как `report.yaml`, выбрав прошедший диапазон своего теста:

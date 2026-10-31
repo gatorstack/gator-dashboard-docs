@@ -70,7 +70,8 @@ namespaced CR. ClusterQuotaTemplate хранит шаблон, Quota — пра�
 ## Учёт и тариф
 
 В Gator Cost правило `MeteringPolicy` определяет, какие ресурсы и поля учитывать.
-Глобальный `TariffPlan` задаёт цены, а `ProjectTariffPlan` полностью заменяет
+`ProjectSubscription` назначает проекту native Subscription OpenMeter.
+Глобальный `TariffPlan` задаёт цены, а назначенный `ProjectTariffPlan` полностью заменяет
 план для указанного проекта на свой период действия.
 
 Потребление группируется по проекту, продукту и инстансу. Инстанс — логический

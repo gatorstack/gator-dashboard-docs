@@ -1,6 +1,6 @@
 # Объекты и API OpenMeter
 
-Gator Cost 0.7 интегрирован с self-hosted OpenMeter версии `v1.0.0-beta.236`.
+Gator Cost 0.8 интегрирован с self-hosted OpenMeter версии `v1.0.0-beta.236`.
 Поставка использует совместимый API образ для invoice simulation; формулы цен
 и денежное округление выполняются upstream OpenMeter. Не заменяйте отдельный
 binary произвольной версией без проверки API/worker совместимости.
@@ -10,6 +10,7 @@ binary произвольной версией без проверки API/worke
 | Gator / Kubernetes | Примитив OpenMeter | Для чего |
 | --- | --- | --- |
 | Project / namespace из политики | Customer с subjectKey проекта | Изоляция usage и начислений |
+| ProjectSubscription | Subscription на закреплённой версии Plan | Назначение проекта и календарный цикл |
 | Принятый TariffPlan / ProjectTariffPlan | Опубликованная версия Plan и rate cards | Native каталог полного набора ставок |
 | Класс и его учётный scope | Feature с meter/group filters | Выбрать нужное количество |
 | CloudEvents потребления | Meter | Агрегация raw quantity |
@@ -18,9 +19,10 @@ binary произвольной версией без проверки API/worke
 | Предварительный расчёт | Invoice simulation | Деньги без новых финансовых записей |
 | Финансовый документ | Invoice / realization OpenMeter | Отдельный цикл биллинга |
 
-Subscriptions не создаются автоматически. План каталога не является назначением
-подписки проекту. Gator выбирает действующую версию, затем создаёт/находит Charge
-с feature, ценой и периодом. В текущей поставке invoicing использует Sandbox;
+ProjectSubscription создаёт настоящую Subscription на конкретной версии Plan.
+Даты и цены её фаз читаются из OpenMeter; billing worker создаёт и поддерживает
+native Charges. Сборщик не создаёт отдельный Charge для subscription usage.
+Подробнее: [назначения через CRD](subscriptions.md). Invoicing использует Sandbox;
 автоматические внешние платежи и prepaid gating не подключены.
 
 ## Финансовые сущности
@@ -61,38 +63,35 @@ Usage meters принимают `type: gator.usage.v2`, control — `gator.contr
 
 ## Features и scope начисления
 
-Рабочая Feature выбирает `kind=usage`, текущий `epoch` и `route`. Обычная unit
-ставка дополнительно фильтрует immutable tariff ID. Месячный включённый объём
-не разделяется по ревизиям тарифа, иначе каждая ревизия получила бы новый порог.
+После перехода рабочая Feature выбирает `kind=subscription_usage`, текущий epoch,
+route и закреплённый tariff ID. Ключи начинаются с `gcs_`. События старого пути
+с `kind=usage` и архива `kind=archive` не совпадают с новыми Features.
 
-`route` выводится из `family + rate.key + unit`. Scope Charge дополнительно
-включает project, epoch и начало периода:
+`route` выводится из `family + rate.key + unit`. Период Subscription — календарный
+месяц UTC с общей месячной ступенью по проекту. Смена назначения с free tier
+допускается на границе месяца; перезапуск и фильтр отчёта порог не обнуляют.
 
-- Unit usage: календарные сутки UTC, отдельный tariff ID.
-- Included usage: календарный месяц UTC, общий route внутри проекта.
-
-Charge получает `unique_reference_id`. При рестарте повторный POST может вернуть
-409; контроллер находит существующий charge и проверяет ту же цену. В API v3
-пагинация имеет вид **`page[number]` / `page[size]`**, не `page_size`.
+Старые отдельные Charges сохраняются для истории: unit — сутки UTC с tariff ID,
+included — месяц с общим route. Их unique_reference_id защищает повторное создание
+при replay старого pending. В API v3 пагинация — **page[number] / page[size]**.
 
 Не завязывайте внешние интеграции на вычисленные hash-ключи. Используйте metadata,
 labels, customer subject, native IDs и GVK source UID/revision.
 
 ## Каталог и реальное начисление
 
-Каталог Plan публикует полный объявленный набор ставок. Метаданные связывают его
-с исходным UID, revision, family и validFrom. В каталоге rate cards имеют месячный
-billing cadence. Рабочие отдельные Charges могут иметь суточный или месячный
-период, а первый месяц после миграции — индивидуальный остаток включённого объёма.
+Plan публикует полный набор ставок, metadata связывают его с исходным UID,
+revision и family. ProjectSubscription закрепляет native plan ID/version.
+При переходе в середине месяца Plan может содержать bootstrap-фазу с остатком
+включённого объёма, затем обычную фазу со следующего UTC-месяца. Остаток записан
+в metadata native Plan; это не второй накопительный ledger.
 
-Например, публичный тариф включает 10 MB, но проект уже израсходовал их до
-миграции. В каталоге остаётся полный тариф, а charge первого месяца имеет unit
-цену 1 RUB/MB. Это не потеря бесплатного tier: ранее использованный объём не
-должен выдаваться второй раз.
+Например, при уже использованных 10 MB первая фаза имеет unit цену 1 RUB/MB,
+следующая — полные 10 MB бесплатно. Цены за единицу не prorate-ятся.
 
-Статус native Plan `active` означает опубликованный каталог. `PriceList.phase`
-и выбор Gator учитывают validFrom/validUntil, acceptedAt, отзыв и project override.
-Эти статусы отвечают на разные вопросы.
+Native Plan active означает публикацию каталога; активность назначения определяется
+Subscription. PriceList.Active после subscriptionsFrom отражает фактическое
+назначение проекта. Другой действующий каталог может иметь phase=Available.
 
 ## CloudEvent потребления
 
@@ -110,7 +109,7 @@ billing cadence. Рабочие отдельные Charges могут иметь
   "data": {
     "quantity": "6",
     "billed_quantity": "6",
-    "kind": "usage",
+    "kind": "subscription_usage",
     "epoch": "openmeter-1",
     "route": "derived-route",
     "tariff": "immutable-selection-id",

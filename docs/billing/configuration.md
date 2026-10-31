@@ -16,6 +16,7 @@ resource `costconfigurations`. Контроллер читает только о
 | `currency` | `RUB`, обязательно | Единственная валюта текущего CRD |
 | `storageMode` | `OpenMeter` / `LegacyPostgreSQL` | Для новой архитектуры явно `OpenMeter`; отсутствие поля включает legacy путь |
 | `epoch` | Непустая строка | Обязателен в OpenMeter mode; отделяет native поток от архива, не меняется при upgrade |
+| `subscriptionsFrom` | Необязательный RFC3339 datetime | Неизменяемая граница перехода на обязательные native Subscriptions; до неё действует предыдущий выбор плана |
 | `cutoverAt` | RFC3339 datetime | Фиксируется миграцией; это не команда на повторную отправку |
 | `openMeter` | Объект | В native mode требуется `enabled: true` |
 | `openMeter.enabled` | Boolean, обязательно внутри объекта | Включение OpenMeter |

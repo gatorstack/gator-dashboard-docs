@@ -5,7 +5,7 @@ module.exports = {
     'getting-started',
     { type: 'category', label: 'Биллинг: GVK и OpenMeter', collapsed: false, items: [
       'billing/index', 'billing/architecture', 'billing/configuration',
-      'billing/metering-policies', 'billing/tariffs', 'billing/openmeter',
+      'billing/metering-policies', 'billing/tariffs', 'billing/subscriptions', 'billing/openmeter',
       'billing/state-and-reports', 'billing/examples', 'billing/operations',
     ] },
     { type: 'category', label: 'Руководство пользователя', collapsed: false, items: [

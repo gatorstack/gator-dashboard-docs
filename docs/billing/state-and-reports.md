@@ -61,12 +61,14 @@ Resource `pricelists`. Контроллер создаёт его в namespaces 
 | --- | --- |
 | `sourceUID`, `revision`, `sourceName` | Источник и версия |
 | `title`, `family`, `scope` | Подпись, семейство, `Global` / `Project` |
-| `phase` | `Scheduled`, `Active`, `Overridden`, `Expired`, `Withdrawn`, `Conflict` |
+| `phase` | `Scheduled`, `Active`, `Available`, `Overridden`, `Expired`, `Withdrawn`, `Conflict` |
 | `currency`, `validFrom`, `validUntil` | Цена действует в этих границах; конец может учитывать отзыв |
 | `rates[]` | `key/product/title/unit/price/includedQuantity/includedPeriod/conditions` |
 | `contentHash`, `updatedAt` | Контроль версии производной проекции |
 | `conditions` | Ready/Published и время обновления |
 
+`Available` — каталог без активного назначения этому проекту. После
+subscriptionsFrom Active/Conflict определяются native Subscriptions.
 `Overridden` — глобальный план сейчас заменён проектным. `Withdrawn` — будущая
 версия отозвана до старта. `Conflict` — несколько подходящих активных версий.
 Если `unitTitle` настроен, `rates.unit` является публичной подписью единицы;

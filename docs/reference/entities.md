@@ -379,3 +379,12 @@ Cluster-scoped `cost.gatorstack.dev/v1alpha1`. Подключает измеря
 
 Полный независимый справочник всех billing GVK, status и правил native OpenMeter:
 [Биллинг: GVK и OpenMeter](../billing/index.md).
+
+## ProjectSubscription
+
+GVK `cost.gatorstack.dev/v1alpha1`, Kind ProjectSubscription, scope Namespaced,
+resource projectsubscriptions. Назначает конкретный TariffPlan/ProjectTariffPlan
+native Customer проекта. Spec: planRef.kind/name, startAt, необязательный endAt.
+Status: native subscription/customer/plan ID и версия, даты, family, phase и Ready.
+Namespace является subject; ссылки на приватный план другого проекта запрещены.
+[Полный справочник и примеры](../billing/subscriptions.md).

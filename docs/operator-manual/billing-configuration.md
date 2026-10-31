@@ -427,7 +427,7 @@ retention TSDB должна быть длиннее этого окна. Для 
 
 ## Хранение и бесплатный объём в OpenMeter
 
-В версии 0.7 CostConfiguration использует `storageMode: OpenMeter` и стабильный
+В native режиме CostConfiguration использует `storageMode: OpenMeter` и стабильный
 `epoch`, без ledger DSN. CollectorCheckpoint хранит текущие сессии, последние
 точки серий и ограниченную очередь неподтверждённых событий. История, принятые
 тарифы и диагностика сохраняются событиями OpenMeter, ClickHouse хранит их
@@ -446,10 +446,10 @@ OpenMeter, точные границы неполных минут и трафи
 сверх лимита завершается ошибкой; выберите более короткий период.
 
 TariffPlan/ProjectTariffPlan синхронизируются в Plans/Features/Meters OpenMeter.
-Действующий план проекта выбирает контроллер; рабочие начисления создаются
-native Charges. Подписки OpenMeter пока не используются. При новом тарифе
-сборщик ждёт подтверждения его принятой истории в OpenMeter, не продвигая
-курсор по старому cache.
+Назначение проекта управляется ProjectSubscription и создаёт native Subscription.
+Начиная с CostConfiguration.subscriptionsFrom рабочий план определяется её фазой,
+а Charges поддерживает OpenMeter. Исторический выбор до границы сохраняется.
+Полный контракт: [ProjectSubscription](../billing/subscriptions.md).
 
 Адаптер метрик входит в Gator Cost: он читает стандартный Prometheus HTTP API
 и формирует CloudEvents по MetricMeteringPolicy. Отдельный штатный collector

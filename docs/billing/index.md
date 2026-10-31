@@ -7,7 +7,7 @@ title: Биллинг через GVK и OpenMeter
 
 Это руководство описывает биллинг на уровне Kubernetes API и OpenMeter.
 Для его настройки и проверки достаточно `oc`/`kubectl` и API OpenMeter;
-пользовательская консоль не требуется. Описана архитектура Gator Cost 0.7.
+пользовательская консоль не требуется. Описана архитектура Gator Cost 0.8.
 
 Gator Cost выбирает внешние ресурсы через GVK, получает количество из полей CR
 или метрик, сохраняет курсор и доставляет CloudEvents. OpenMeter хранит историю,
@@ -23,7 +23,7 @@ Gator Cost выбирает внешние ресурсы через GVK, пол
 | Чтение Prometheus HTTP API, baseline, reset и интеграл gauge | Собственный адаптер метрик Gator Cost |
 | Текущие сессии, точки, неподтверждённые события, единственный writer | `CollectorCheckpoint` и Kubernetes `Lease` |
 | История потребления и принятых тарифов | OpenMeter events и ClickHouse |
-| Выбор глобального или проектного плана на момент измерения | Контроллер Gator Cost |
+| Назначение конкретного плана проекту | ProjectSubscription → OpenMeter Subscription |
 | Native каталог тарифов | OpenMeter Plans / Features / Meters |
 | Начисления, бесплатный месячный порог, округление | OpenMeter usage-based Charges и цены |
 | Предварительная детализация | `CostReport`, OpenMeter aggregates/events и invoice simulation |
@@ -32,10 +32,10 @@ Gator Cost выбирает внешние ресурсы через GVK, пол
 Наши CRD относятся к Gator Cost, а не к Kubernetes operator OpenMeter.
 Синхронизация использует API-примитивы OpenMeter.
 
-Рабочий учёт использует native Charges. Подписки OpenMeter (`Subscriptions`)
-пока не связываются с проектами. Наличие опубликованного Plan в OpenMeter
-означает опубликованную версию каталога; действующий тариф проекта выбирается
-по датам и правилам Gator Cost. Подробнее: [модель OpenMeter](openmeter.md).
+Рабочий план проекта определяется native Subscription OpenMeter. Управление —
+через [ProjectSubscription](subscriptions.md); OpenMeter сам согласует её Charges.
+CRD сохраняют декларативную настройку, отдельной базы назначений Gator нет.
+До явно установленной границы перехода сохраняется прежний способ выбора.
 
 ## Сущности Kubernetes
 
@@ -49,6 +49,7 @@ Gator Cost выбирает внешние ресурсы через GVK, пол
 | `MetricMeteringPolicy` | `metricmeteringpolicies`, Cluster | Администратор | Метрики внешнего ресурса → измеренное потребление |
 | `TariffPlan` | `tariffplans`, Cluster | Администратор тарифов | Глобальная версия полного семейства ставок |
 | `ProjectTariffPlan` | `projecttariffplans`, Namespaced | Администратор тарифов | Полная проектная замена глобального плана |
+| `ProjectSubscription` | `projectsubscriptions`, Namespaced | Администратор биллинга | Назначение конкретного плана проекту через OpenMeter |
 | `CollectorCheckpoint` | `collectorcheckpoints`, Namespaced | Только контроллер | Текущее состояние и ограниченный pending |
 | `PriceList` | `pricelists`, Namespaced | Только контроллер | Проекция принятой цены в проект |
 | `CostReport` | `costreports`, Namespaced | Клиент с RBAC | Неизменяемый временный запрос детализации |

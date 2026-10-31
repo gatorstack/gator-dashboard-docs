@@ -13,6 +13,8 @@ flowchart TB
   transport --> sink["OpenMeter sink worker"]
   sink --> history["ClickHouse: events и aggregates"]
   sink --> dedupe["Redis: дедупликация"]
+  assignments["ProjectSubscription CRD"] --> openMeter
+  openMeter --> subscriptions["Назначения, фазы и рабочие цены"]
   openMeter --> finance["PostgreSQL OpenMeter: каталог и финансы"]
 ```
 
@@ -35,7 +37,7 @@ API OpenMeter принимает стандартные CloudEvents и пере�
 | Последняя точка каждой raw series | `CollectorCheckpoint` | Baseline и курсор, не полная история samples |
 | Ещё не подтверждённые события | `CollectorCheckpoint.pending` | Удаляются после доставки |
 | Usage, принятые тарифы, issues и архив | OpenMeter / ClickHouse | Автоматическое удаление истории не настроено |
-| Native Plans, Features, Customers, Charges и invoices | PostgreSQL OpenMeter | Финансовое состояние OpenMeter |
+| Native Plans, Features, Customers, Subscriptions, Charges и invoices | PostgreSQL OpenMeter | Финансовое состояние OpenMeter |
 | Dedupe IDs | Redis OpenMeter | В поставке 32 дня |
 | Транспортные сообщения | Kafka | Retention ограничен, в поставке 7 дней |
 | `CostReport` запрос/результат | Kubernetes | TTL один час, исходная история остаётся |
