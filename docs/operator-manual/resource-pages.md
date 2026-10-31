@@ -868,3 +868,27 @@ Mappings принимают `value` для неизменяемого шабло
 число байтов. Related-resources с `presentation: fields` показывает fields одной
 связанной записи, при отсутствии — значения для пустого объекта; несколько
 записей и отказы доступа всегда отображаются ошибкой.
+
+## Начальная сортировка и цвет плашек
+
+Список может задавать начальный порядок через `defaultSort`: `path` должен
+совпадать с путём одной из колонок; `direction` — `asc` или `desc` (по умолчанию
+`asc`). Пользователь может изменить порядок нажатием заголовка колонки.
+
+```yaml
+x-dashboard-list:
+  sortable: true
+  defaultSort: {path: /status/phase, direction: asc}
+  columns:
+    - title: Статус
+      path: /status/phase
+      renderer: badge
+      labels: {Active: Активный, Expired: Завершён}
+      badgeVariants: {Active: success}
+```
+
+`badgeVariants` связывает исходное значение поля с семантическим вариантом:
+`default`, `secondary`, `success`, `destructive`, `outline`. Неописанные значения
+используют `secondary`. `success` — зелёная плашка с поддержкой обеих тем.
+Та же настройка доступна для badge-полей карточки, включая `header.status`.
+Имена статусов и подписи задаёт продукт; произвольный CSS в схеме не требуется.
