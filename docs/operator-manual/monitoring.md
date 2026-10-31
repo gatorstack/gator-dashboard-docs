@@ -7,8 +7,8 @@ VictoriaMetrics и сбора метрик. Установленный опер�
 
 Доступны отдельная установка оператора и комплект административного мониторинга:
 VMCluster, VMAgent и Grafana с готовыми дашбордами для внешних libvirt/Ceph targets.
-Автоматическое создание scrape при заказе PaaS и доступ потребителей проектов
-к метрикам ещё не подключены. Графики в Dashboard этим не добавляются.
+Для потребителей доступен отдельный продукт со списком рядов метрик проекта и всеми лейблами.
+Автоматическое создание scrape при заказе PaaS и графики в Dashboard пока не подключены.
 
 ## Установка оператора
 
@@ -400,42 +400,167 @@ Stats запрашиваются раз в 60 секунд, затем соби�
 как «Не задан». Суммарные account/user quotas учитываются отдельно;
 наличие таких ограничений не определяется по одному bucket_quota.
 
-## Планирование изоляции проектов
+## Изоляция проектов
 
-Рекомендуемая схема следующего этапа — VMCluster с отдельным tenant каждого
-проекта и tenant платформы. Для namespace UID проекта выделяется устойчивый
-уникальный числовой accountID. Доверенный сборщик назначает tenant при записи;
-VMAuth или metrics gateway ограничивает чтение после проверки прав пользователя
-на проект. Одного label selector в запросе недостаточно для контроля доступа.
-Нативный VMAuth сам не синхронизирует Kubernetes RBAC и членство в проектах.
-См. [multitenancy](https://docs.victoriametrics.com/cluster-victoriametrics/#multitenancy)
-и [VMAuth](https://docs.victoriametrics.com/vmauth/).
+Проектный контур использует отдельный VictoriaMetrics tenant для каждой пары
+namespace UID и UID объекта Project. Tenant 0 остаётся административным. Метки
+помогают проверить принадлежность, а доступ ограничивают серверная авторизация
+и NetworkPolicy. Общая Grafana предназначена администраторам.
 
-| Источник | Как связать с проектом |
-| --- | --- |
-| Выделенный PaaS endpoint | Namespace UID и UID заказа известны создающей интеграции |
-| Общий libvirt endpoint | Регион + OpenStack project/VM identity связываются с проектом платформы |
-| Общий RGW endpoint | Backend + account/user/bucket identity связываются с владельцем |
-| Общие OSD/PG/host/shared pool | Доступны администраторам; отдельного владельца проекта нет |
+Интеграция `providers/monitoring/chart` из комплекта gator-products создаёт
+неизменяемый `MetricsTenant` с именем `project` в каждом действующем проекте.
+Она выделяет положительный accountID в ConfigMap `gator-metrics-registry`
+namespace мониторинга. Старые записи и номера сохраняются после удаления
+проекта. Сохраните registry в резервной копии вместе с VictoriaMetrics и
+восстанавливайте его до запуска сборщика. Пустой registry поверх существующего
+хранилища может нарушить соответствие tenant; не используйте его как ремонт.
 
-Для libvirt в выбранном
-[vaishutin/libvirt-exporter](https://github.com/vaishutin/libvirt-exporter)
-`project_name` и `instance_name` добавлены во все метрики доменов, включая CPU,
-память, диски и сеть. `project_uuid` и UUID VM выдаются в
-`libvirt_domain_info_meta`. Маршрутизация по имени требует проверенного mapping
-с учётом региона, Keystone domain, переименований и повторного создания имён.
-Для устойчивой изоляции предпочтительны UUID на каждой серии. Relabeling не
-выполняет join между CPU/IO и info-метрикой; при необходимости нужен отдельный
-этап обогащения. Экспортер запускается на каждом compute с read-only сокетом
-libvirt и отдельным портом 9177; существующие Nova/VM не перезапускаются.
+### Проверка владельца
 
-У RGW per-user/per-bucket operation counters включаются отдельно через
-`rgw_user_counters_cache` и `rgw_bucket_counters_cache`; ceph-exporter читает
-их из admin socket RGW. Cache eviction/restart может сбрасывать counters.
-Общие показатели Ceph не дают достоверного разбиения нагрузки shared pool по
-проектам. См. [метрики RGW](https://docs.ceph.com/en/tentacle/radosgw/metrics/).
+Для libvirt сборщик объединяет domain-серии с `libvirt_domain_info_meta` из
+того же scrape. Пара region/project_uuid проверяется по фактическому проекту
+Keystone, полученному с установленными application credentials. `project_name`
+и tenant labels исходного экспортера не определяют доступ.
 
-Эта схема изоляции ещё не настроена. Перед выдачей доступа пользователям нужны
-проверки двух проектов: запрет чтения чужих данных через query, labels, metadata
-и export, подмены tenant при записи и обхода gateway. Серии с неопределённым
-владельцем должны оставаться в контуре платформы.
+Для S3 каждый scrape заново читает bucket stats из RGW Admin Ops API. Владелец
+Account ID связывается с namespace UID через служебный native Account CR
+в namespace S3-провайдера. Эти Account CR и credentials должны оставаться
+недоступны для изменения потребителям. В проект попадают размер, объекты,
+индивидуальные квоты и native per-bucket counters собственных бакетов, в том
+числе созданных S3-клиентом внутри этого аккаунта.
+
+Смена владельца или повторное использование имени другим проектом помещает
+бакет в карантин: старый counter cache не должен раскрыть новому владельцу
+накопленную историю трафика. Такой перенос требует отдельной проверки
+администратором, сброса старого cache и согласованного восстановления lineage.
+Неизвестные владельцы, неоднозначные связи и общие OSD/PG/host/pool метрики
+остаются в административном контуре. Ownership обновляется каждые 30 секунд;
+через 90 секунд без успешного обновления проектный scrape прекращается.
+
+### Установка проектного контура
+
+Предварительно установите VMCluster `platform` и VMAgent административного
+контура в `monitoring`, native Project и RGW Account API, а также провайдеры
+OpenStack/S3. CNI должен применять NetworkPolicy. Проектные роли не должны
+позволять менять NetworkPolicy, provider status, служебные credentials,
+MetricsTenant или scrape-конфигурацию. Администраторы кластера и VPN доверены.
+
+Используйте два разных случайных service token. При обновлениях сохраняйте
+существующие Secret. Пример первоначального создания из защищённых файлов:
+
+```sh
+umask 077
+openssl rand -hex 48 > scrape-token
+openssl rand -hex 48 > data-token
+oc --context "$GATOR_CONTEXT" -n monitoring create secret generic gator-project-metrics \
+  --from-file=scrape-token --from-file=data-token
+oc --context "$GATOR_CONTEXT" -n gator-dashboard create secret generic gator-data-project-metrics \
+  --from-file=token=data-token
+rm scrape-token data-token
+```
+
+В `monitoring` нужен Secret `rgw-bucket-stats` с ключами `access-key`, `secret-key`
+и read-only RGW identity из раздела выше. Интеграция использует Admin Ops подпись
+SigV2 по HTTPS; соответствующий режим должен поддерживаться RGW. В namespace
+проектов должны существовать служебные Secret OpenStack, созданные provisioning:
+поле `config` содержит auth_url, tenant_id, application_credential_id и
+application_credential_secret. Их значения в схемы UI не передаются.
+
+Сохраните `project-metrics.yaml`, заменив адреса своими:
+
+```yaml
+dashboardNamespace: gator-dashboard
+# Если registry образов требует входа, укажите существующий imagePullSecret.
+imagePullSecrets: []
+config:
+  s3SystemNamespace: gator-s3-system
+  inventoryMaxAge: 90
+  vmselect: http://vmselect-platform.monitoring.svc:8481
+  protectedExporterIPs: [10.0.0.10/32, 10.0.0.20/32]
+  openstack:
+    - region: cloud-1
+      authURL: http://10.0.0.10:5000
+      secretName: openstack-cloud-1
+  libvirt:
+    - name: compute-1
+      region: cloud-1
+      url: http://10.0.0.10:9177/metrics
+  rgw:
+    endpoint: https://s3.example.com
+    region: us-east-1
+    cluster: storage-1
+    counters: [http://10.0.0.20:9926/metrics]
+```
+
+`protectedExporterIPs` перечисляет все внешние IP с общими экспортерами.
+Проектные egress policies закрывают TCP 9100, 9177, 9283 и 9926 на этих адресах.
+Остальные TCP-порты и UDP доступны. Политики backend ограничивают VictoriaMetrics,
+VMAgent и общий bucket exporter доверенными monitoring pods; адаптер доступен
+также pods Dashboard. Служебные workers биллинга могут читать административные
+метрики. Пользовательские namespaces не должны добавлять обходные allow policies.
+
+Из корня поставки gator-products выполните:
+
+```sh
+oc --context "$GATOR_CONTEXT" apply -f providers/monitoring/chart/crds/
+helm upgrade --install gator-project-metrics providers/monitoring/chart \
+  --kube-context "$GATOR_CONTEXT" -n monitoring -f project-metrics.yaml --wait
+oc --context "$GATOR_CONTEXT" -n monitoring rollout status deployment/gator-project-metrics
+oc --context "$GATOR_CONTEXT" get metricstenants -A
+```
+
+### Подключение продукта к консоли
+
+Добавьте в существующие values Dashboard:
+
+```yaml
+dataLists:
+  adapters:
+    - name: project-metrics
+      url: http://gator-project-metrics.monitoring.svc:8080
+      existingSecret: gator-data-project-metrics
+```
+
+Обновите Dashboard обычной процедурой установки, сохранив остальные values.
+Установите пакет каталога в тот же namespace:
+
+```sh
+helm dependency build --skip-refresh products/monitoring/chart
+helm upgrade --install gator-product-monitoring products/monitoring/chart \
+  --kube-context "$GATOR_CONTEXT" -n gator-dashboard --wait
+```
+
+Если каталог управляется umbrella release, добавьте зависимость туда. Не
+устанавливайте отдельный release поверх уже принадлежащих umbrella объектов.
+Пользователям назначьте `monitoring.viewer` через RoleBinding нужного проекта;
+общие стандартные роли включают эти права посредством Kubernetes aggregation.
+Роль позволяет только GET конкретного MetricsTenant и Project. Права на запись
+и административную Grafana этим не выдаются.
+
+Dashboard проверяет caller GET Project и binding. Затем служебный адаптер
+повторно читает живые Namespace/Project/MetricsTenant, сверяет UID и registry
+и выполняет фиксированный запрос рядов только из закреплённого numeric tenant.
+Список содержит имя и весь набор лейблов; одинаковые имена с разными наборами
+показываются отдельными строками. Browser не выбирает
+accountID, PromQL или endpoint. Произвольные query/labels/metadata/export API
+проектам не открываются. Контракт списка описан в [справочнике](../reference/data-list.md).
+
+### Проверка и эксплуатация
+
+В продукте **Мониторинг → Метрики** проверьте два проекта с разными ресурсами:
+списки должны отражать только их ВМ и бакеты. Попытка запросить страницу чужого
+проекта должна давать 403. Проверьте из временных pods каждого проекта, что
+порты VictoriaMetrics, общего bucket exporter и внешних exporter IP недоступны,
+а обычное подключение к Kubernetes/S3 работает. Проверьте отсутствие прав
+менять binding, registry, Secret, provider status и создавать unmanaged scrapes.
+
+При отсутствии метрик смотрите targets VMAgent `projects`, readiness и logs
+`gator-project-metrics`, свежесть credentials и соответствие Account bootstrap
+namespace UID. UP пустого libvirt scrape допустим: на compute может не быть
+подтверждённых ВМ проекта. Для бакетов действует задержка RGW accounting;
+traffic counters появляются после операций с объектами и сбрасываются при
+restart/eviction. Ошибка источника показывается как ошибка, а не нулевое потребление.
+
+Проектная история начинается при включении этой маршрутизации. Старая история
+tenant 0 автоматически не копируется. Lifecycle PaaS StaticScrape и графики
+внутри продукта добавляются отдельно.

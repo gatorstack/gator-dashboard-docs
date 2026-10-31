@@ -110,3 +110,11 @@ rbac:
 `history.policyRef` выбирает HistoryPolicy (по умолчанию dashboard).
 Оператор и его chart устанавливаются отдельно; параметры описаны в
 [руководстве Gator History](../operator-manual/history.md).
+
+## Списки данных
+
+`dataLists.adapters` задаёт installation-managed адаптеры: `name`, внутренний
+HTTP(S) `url`, `existingSecret` (ключ `token` в namespace Dashboard). Credentials
+монтируются read-only; caller token адаптеру не пересылается. URL не может
+содержать username/password, query или fragment; redirects запрещены.
+См. [контракт data-list](data-list.md) и [мониторинг](../operator-manual/monitoring.md).
