@@ -441,7 +441,12 @@ Account ID связывается с namespace UID через служебный
 
 Предварительно установите VMCluster `platform` и VMAgent административного
 контура в `monitoring`, native Project и RGW Account API, а также провайдеры
-OpenStack/S3. CNI должен применять NetworkPolicy. Проектные роли не должны
+OpenStack/S3. CNI должен применять NetworkPolicy. На хостах общих экспортёров также ограничьте вход на metrics-порты
+адресами доверенных сборщиков: это защищает endpoint от ВМ OpenStack и других
+клиентов вне Kubernetes. Для host-network listeners нужны IPv4/IPv6 INPUT rules;
+для Docker published ports — правила DOCKER-USER с учётом DNAT. Настройка должна
+сохраняться после reboot и применяться до старта exporter containers.
+Проектные роли не должны
 позволять менять NetworkPolicy, provider status, служебные credentials,
 MetricsTenant или scrape-конфигурацию. Администраторы кластера и VPN доверены.
 
