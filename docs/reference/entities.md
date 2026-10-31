@@ -373,3 +373,6 @@ Cluster-scoped `cost.gatorstack.dev/v1alpha1`. Подключает измеря
 `includedPeriod: MONTH` задают включённое измеряемое количество на проект и
 ключ ставки в месяце UTC. Измеряемые единицы включают GB-hour/MB; старые
 *-minute сохраняются. PriceList публикует эти поля и `conditions` для сверки.
+
+Полный независимый справочник всех billing GVK, status и правил native OpenMeter:
+[Биллинг: GVK и OpenMeter](../billing/index.md).

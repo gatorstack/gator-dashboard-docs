@@ -6,7 +6,7 @@
 | --- | --- |
 | Dashboard | Values, Product/ProductResource/ProductPage, Project, Role/RoleBinding, общие ClusterRole/ClusterRoleBinding, внешние схемы ConfigMap |
 | Dex | Конфигурация, клиентские credentials, User/Group, credentials namespace, база на PVC |
-| Биллинг | Ledger PostgreSQL, отдельная БД OpenMeter, ClickHouse, Kafka, Redis и их конфигурация |
+| Биллинг | PostgreSQL OpenMeter, ClickHouse, Kafka, Redis, CollectorCheckpoint/Lease и конфигурация |
 | TLS | Внешние сертификаты/ключи или воспроизводимая конфигурация issuer и план ротации |
 
 Сессии Dashboard восстанавливать не нужно: после перезапуска пользователи
@@ -153,10 +153,15 @@ sudo rm /root/ceph-dashboard-password
 
 ## Восстановить биллинг
 
-Остановите начисляющие collectors/workers и jobs. Восстановите согласованное
-состояние ledger и OpenMeter, включая ACK/outbox и дедупликацию. До повторной
-отправки сверьте, какие события уже приняты. Потеря Redis может убрать защиту
-от дублей; восстановление только ledger PostgreSQL не восстанавливает всю систему.
+Остановите collector и задания OpenMeter. Восстановите согласованное состояние
+OpenMeter PostgreSQL/ClickHouse/Kafka/Redis и Kubernetes CollectorCheckpoint.
+В checkpoints остаются текущие курсоры и неподтверждённые события, в OpenMeter —
+история и начисления. Сохраните CostConfiguration, неизменный epoch, принятые
+тарифы, migration marker и customer metadata с остатком первого месяца.
+До повторной отправки сверьте принятые ID. Потеря Redis убирает защиту от дублей;
+один backup PostgreSQL не восстанавливает всю систему. Доставка старше 31 дня
+требует ручной сверки. Не запускайте старые SQL workers после миграции.
+Базы gatorcost в новой архитектуре нет; PostgreSQL самого OpenMeter сохраняется.
 
 История KeepAll требует контроля роста PVC. Kafka имеет ограниченный транспортный
 retention и не заменяет долговременный архив истории потребления.

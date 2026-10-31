@@ -1,169 +1,58 @@
 # Установка биллинга
 
-Gator Cost и OpenMeter устанавливаются отдельно от Dashboard. Эта инструкция
-предназначена для администратора новой установки в одном кластере. Текущая
-поставка использует namespaces `gator-cost` и `openmeter`; внутренние имена
-сервисов и NetworkPolicy рассчитывают на эти имена.
+Gator Cost 0.7 — сборщик и контроллеры CRD. История потребления, тарифные снимки,
+бесплатные объёмы и начисления находятся в OpenMeter. Отдельной базы `gatorcost`
+нет. Dashboard показывает детализацию и прайс-листы через обычный вход и RBAC.
+Самостоятельный admin UI прежней версии не устанавливается.
 
-Самостоятельный административный UI Cost открывается локальным port-forward.
-Продукт Billing в Dashboard использует его обычный вход и Kubernetes RBAC для
-проектной детализации через CostReport. Внешние платежи сейчас не настроены.
+Эта инструкция предназначена для новой установки. Для существующей базы
+сначала выполните [перенос истории](#перенос-существующей-истории).
 
 ## Требования
 
-Нужны chart `charts/gator-cost` и `deploy/openmeter/chart` из комплекта Gator Cost,
-Helm, административный `GATOR_CONTEXT` и StorageClass с достаточным местом.
-По умолчанию требуются PVC: PostgreSQL 10 GiB, Kafka 10 GiB, ClickHouse 10 GiB,
-Redis 1 GiB. Эти значения задают начальные размеры, а не гарантированный объём
-долговременной истории. PostgreSQL и инфраструктура в текущих charts имеют
-по одной реплике; полноценная HA-топология ими не создаётся.
+Нужны Helm, `oc`, административный `GATOR_CONTEXT`, charts `charts/gator-cost`
+и `deploy/openmeter/chart` из комплекта поставки, образы совместимого выпуска
+и StorageClass. Типовой размер PVC: PostgreSQL OpenMeter 10 GiB, Kafka 10 GiB,
+ClickHouse 10 GiB, Redis 1 GiB. Это начальные размеры, не предел роста истории.
+Текущие charts имеют по одной реплике хранилищ; HA автоматически не создаётся.
 
-Команды выполняются из каталога `gator-cost`. Не запускайте `make deploy`
-как универсальный установщик другого кластера: текущие вспомогательные bootstrap
-скрипты закреплены на учебном окружении. Ниже используется явная установка charts.
+Команды выполняются из каталога комплекта Gator Cost. Вспомогательные скрипты
+учебного стенда не являются установщиком произвольного кластера.
 
-## 1. Подготовьте namespaces и credentials
+## Подготовьте namespaces и credentials
 
 ```sh
 oc --context "$GATOR_CONTEXT" create namespace gator-cost
 oc --context "$GATOR_CONTEXT" create namespace openmeter
 ```
 
-Для новой установки подготовьте защищённый каталог **вне Git** со следующими
-файлами. Используйте случайные пароли/токены из вашего менеджера секретов;
-значения в шаблонах заменяются до выполнения команд.
-
-| Файл | Содержимое |
-| --- | --- |
-| `password` | Пароль PostgreSQL пользователя `gatorcost` |
-| `readerPassword` | Отдельный пароль `gatorreader` |
-| `dsn` | `postgres://gatorcost:PASSWORD@gator-cost-postgresql.gator-cost.svc:5432/gatorcost?sslmode=disable` |
-| `readerDsn` | Такая же строка для пользователя `gatorreader` и его пароля |
-| `token` | Случайный служебный API bearer для Gator Cost |
-| `clickhousePassword` | Случайный пароль OpenMeter ClickHouse |
-
-Пароли в DSN должны быть корректно URL-кодированы; случайные hex-пароли
-не требуют дополнительного экранирования. Укажите путь защищённого каталога:
-
-```sh
-GATOR_BILLING_SECRETS='/secure/gator-billing'
-oc --context "$GATOR_CONTEXT" -n gator-cost create secret generic gator-cost-postgresql \
-  --from-file=password="$GATOR_BILLING_SECRETS/password" \
-  --from-file=readerPassword="$GATOR_BILLING_SECRETS/readerPassword" \
-  --from-file=dsn="$GATOR_BILLING_SECRETS/dsn" \
-  --from-file=readerDsn="$GATOR_BILLING_SECRETS/readerDsn"
-oc --context "$GATOR_CONTEXT" -n gator-cost create secret generic gator-cost-api-reader \
-  --from-file=token="$GATOR_BILLING_SECRETS/token"
-```
-
-Namespace, Secret и ключи должны совпадать с конфигурацией ниже. Не заменяйте
-credentials существующей БД такими командами: создание Secret не меняет пароль
-в уже инициализированном PostgreSQL.
-
-## 2. Настройте Gator Cost
-
-Сохраните `cost-configuration.yaml`:
-
-```yaml
-apiVersion: cost.gatorstack.dev/v1alpha1
-kind: CostConfiguration
-metadata:
-  name: default
-spec:
-  clusterID: main
-  systemNamespace: gator-cost
-  currency: RUB
-  ledger:
-    postgresql:
-      connectionSecretRef: {name: gator-cost-postgresql, key: dsn}
-      readerConnectionSecretRef: {name: gator-cost-postgresql, key: readerDsn}
-    retention: KeepAll
-  accounting:
-    gapPolicy: LastKnown
-    heartbeatInterval: 15s
-    staleAfter: 45s
-    maxEstimateAge: Unlimited
-    conflictPolicy: Suspend
-    initialObservation: StartNow
-  reporting:
-    api:
-      url: http://gator-cost-api.gator-cost.svc:8080
-      authTokenSecretRef: {name: gator-cost-api-reader, key: token}
-    ui:
-      currencySource: CostConfiguration
-      showEstimates: true
-      showCoverage: true
-  evaluation:
-    celCostLimit: 100000
-  openMeter:
-    enabled: true
-    url: http://openmeter-api.openmeter.svc:8888
-    workerInterval: 1s
-    batchSize: 32
-```
-
-Для приватного образа подготовьте Secret `registry-reader` типа
-`kubernetes.io/dockerconfigjson` в namespace `gator-cost` с правом чтения образа.
-В values хранится только ссылка; credential не должен попадать в Git.
-
-`clusterID` должен быть стабильным уникальным именем вашего кластера.
-Сохраните `cost-values.yaml`, заменив StorageClass на свой:
-
-```yaml
-image:
-  repository: ghcr.io/gatorstack/gator-cost
-  tag: 20261031-02
-imagePullSecrets:
-- name: registry-reader
-postgres:
-  storageClass: your-storage-class
-  storageSize: 10Gi
-collector:
-  replicas: 1
-workers:
-  replicas: 2
-sourcePermissions:
-  - apiGroups: [""]
-    resources: [configmaps]
-    verbs: [get, list, watch]
-```
-
-Пример разрешает чтение ConfigMap для первого правила учёта. Для реального CR
-замените/добавьте его точный GVR. Права на Secret для источников учёта не нужны.
-
-```sh
-oc --context "$GATOR_CONTEXT" apply -f charts/gator-cost/crds/
-oc --context "$GATOR_CONTEXT" apply -f cost-configuration.yaml
-helm upgrade --install gator-cost ./charts/gator-cost \
-  --kube-context "$GATOR_CONTEXT" -n gator-cost \
-  -f cost-values.yaml --wait --timeout 8m
-```
-
-До готовности OpenMeter журнал доставки может показывать его недоступность.
-
-## 3. Подготовьте БД OpenMeter
-
-OpenMeter использует отдельную базу и отдельного пользователя на том же PostgreSQL.
-В защищённом каталоге подготовьте `openmeter-role.sql`, заменив пароль:
+Подготовьте защищённый каталог вне Git с файлами `password` (случайный пароль
+администратора PostgreSQL), `clickhousePassword`, `token` (служебный credential)
+и `openmeter-role.sql`. В SQL задайте отдельный пароль роли OpenMeter:
 
 ```sql
 CREATE ROLE gatoropenmeter LOGIN PASSWORD 'REPLACE_WITH_PRIVATE_PASSWORD';
 CREATE DATABASE openmeter OWNER gatoropenmeter;
 ```
 
-Выполните один раз для новой установки:
-
 ```sh
-oc --context "$GATOR_CONTEXT" -n gator-cost exec -i gator-cost-postgresql-0 -- \
-  psql -X -q -v ON_ERROR_STOP=1 -U gatorcost -d postgres \
-  < "$GATOR_BILLING_SECRETS/openmeter-role.sql"
+GATOR_BILLING_SECRETS='/secure/gator-billing'
+oc --context "$GATOR_CONTEXT" -n gator-cost create secret generic gator-cost-postgresql \
+  --from-file=password="$GATOR_BILLING_SECRETS/password"
+oc --context "$GATOR_CONTEXT" -n gator-cost create secret generic gator-cost-api-reader \
+  --from-file=token="$GATOR_BILLING_SECRETS/token"
+oc --context "$GATOR_CONTEXT" -n openmeter create secret generic gator-openmeter-runtime \
+  --from-file=clickhousePassword="$GATOR_BILLING_SECRETS/clickhousePassword"
 ```
 
-## 4. Настройте OpenMeter
+Gator Cost не требует собственного DSN и reader-пользователя. Историческое имя
+PostgreSQL Service сохранено для совместимости; сервер принадлежит OpenMeter.
+Не меняйте Secret существующей БД без согласованной ротации её пароля.
 
-В том же защищённом каталоге подготовьте `openmeter-config.yaml`.
-Замените три значения `REPLACE_...`: пароль ClickHouse, пароль PostgreSQL
-и случайный portal token secret. Пароли должны совпадать с созданными выше.
+## Установите OpenMeter
+
+Сохраните в защищённом каталоге `openmeter-config.yaml`, заменив три значения
+`REPLACE_...`. Пароль роли должен совпадать с `openmeter-role.sql`.
 
 ```yaml
 environment: self-hosted
@@ -213,44 +102,152 @@ meters: []
 ```
 
 ```sh
-oc --context "$GATOR_CONTEXT" -n openmeter create secret generic gator-openmeter-runtime \
-  --from-file=clickhousePassword="$GATOR_BILLING_SECRETS/clickhousePassword"
 oc --context "$GATOR_CONTEXT" -n openmeter create secret generic gator-openmeter-config \
   --from-file=config.yaml="$GATOR_BILLING_SECRETS/openmeter-config.yaml"
 ```
 
-В несекретном `openmeter-values.yaml` достаточно выбрать StorageClass:
+Сохраните несекретный `openmeter-values.yaml`:
 
 ```yaml
 storageClass: your-storage-class
+postgresql:
+  enabled: true
+  namespace: gator-cost
+  secretName: gator-cost-postgresql
+  storageClass: your-storage-class
+  storageSize: 10Gi
 ```
+
+Сначала создайте workloads, дождитесь PostgreSQL и подготовьте его базу.
+API OpenMeter сможет завершить запуск после создания роли и БД:
 
 ```sh
 helm upgrade --install gator-openmeter ./deploy/openmeter/chart \
-  --kube-context "$GATOR_CONTEXT" -n openmeter \
-  -f openmeter-values.yaml --wait --timeout 10m
+  --kube-context "$GATOR_CONTEXT" -n openmeter -f openmeter-values.yaml
+oc --context "$GATOR_CONTEXT" -n gator-cost wait pod/gator-cost-postgresql-0 \
+  --for=condition=Ready --timeout=5m
+oc --context "$GATOR_CONTEXT" -n gator-cost exec -i gator-cost-postgresql-0 -- \
+  psql -X -q -v ON_ERROR_STOP=1 -U gatorcost -d postgres \
+  < "$GATOR_BILLING_SECRETS/openmeter-role.sql"
+oc --context "$GATOR_CONTEXT" -n openmeter rollout status deployment/openmeter-api --timeout=5m
+oc --context "$GATOR_CONTEXT" -n openmeter rollout status deployment/openmeter-sink-worker --timeout=5m
 ```
 
-Chart закрепляет совместимые образы API/workers и инфраструктуры OpenMeter.
-Не заменяйте один из них произвольным latest без проверки всей поставки.
+Создание роли/БД выполняется один раз на новой установке. Chart закрепляет
+совместимые API/workers: не заменяйте один образ произвольным latest.
 
-## 5. Проверьте и откройте UI
+## Установите сборщик и CRD
+
+Сохраните `cost-configuration.yaml`:
+
+```yaml
+apiVersion: cost.gatorstack.dev/v1alpha1
+kind: CostConfiguration
+metadata:
+  name: default
+spec:
+  clusterID: main
+  systemNamespace: gator-cost
+  currency: RUB
+  storageMode: OpenMeter
+  epoch: openmeter-1
+  accounting:
+    gapPolicy: LastKnown
+    heartbeatInterval: 15s
+    staleAfter: 45s
+    maxEstimateAge: Unlimited
+    conflictPolicy: Suspend
+    initialObservation: StartNow
+  reporting:
+    api:
+      url: http://gator-cost-api.gator-cost.svc:8080
+      authTokenSecretRef: {name: gator-cost-api-reader, key: token}
+    ui:
+      currencySource: CostConfiguration
+      showEstimates: true
+      showCoverage: true
+  evaluation: {celCostLimit: 100000}
+  openMeter:
+    enabled: true
+    url: http://openmeter-api.openmeter.svc:8888
+    workerInterval: 1s
+    batchSize: 32
+```
+
+`clusterID` и `epoch` должны оставаться неизменными при обновлениях и восстановлении.
+`epoch` отделяет новый поток от импортированного архива. Не меняйте его для replay.
+
+Сохраните `cost-values.yaml`. Для приватного образа заранее подготовьте Secret
+`registry-reader` типа `kubernetes.io/dockerconfigjson` с правом чтения образа:
+
+```yaml
+image:
+  repository: ghcr.io/gatorstack/gator-cost
+  tag: RELEASE_TAG
+imagePullSecrets:
+  - name: registry-reader
+postgres: {enabled: false}
+ui: {enabled: false}
+collector: {replicas: 1}
+workers: {replicas: 0}
+sourcePermissions:
+  - apiGroups: ['']
+    resources: [configmaps]
+    verbs: [get, list, watch]
+```
+
+Замените `RELEASE_TAG` тегом выбранного выпуска. Укажите точные GVR нужных
+источников вместо примерного ConfigMap; права на Secret источников не нужны.
 
 ```sh
-oc --context "$GATOR_CONTEXT" -n gator-cost get pods,pvc
+oc --context "$GATOR_CONTEXT" apply -f charts/gator-cost/crds/
+oc --context "$GATOR_CONTEXT" apply -f cost-configuration.yaml
+helm upgrade --install gator-cost ./charts/gator-cost \
+  --kube-context "$GATOR_CONTEXT" -n gator-cost \
+  -f cost-values.yaml --wait --timeout 8m
+oc --context "$GATOR_CONTEXT" -n gator-cost get pods,collectorcheckpoints,leases
 oc --context "$GATOR_CONTEXT" -n openmeter get pods,pvc,cronjobs
-oc --context "$GATOR_CONTEXT" -n gator-cost port-forward \
-  svc/gator-cost-ui 19090:9090 --address=127.0.0.1
 ```
 
-Откройте http://127.0.0.1:19090/. Проверьте состояние источников, OpenMeter
-и доставки, затем подключите [первый тариф и правило](billing-configuration.md).
-После изменения Pod port-forward нужно запустить заново.
+CollectorCheckpoint содержит текущие сессии, последние точки и очередь ещё не
+подтверждённых событий. Он не хранит оплаченную историю. Не выдавайте tenant
+доступ к служебному namespace и не редактируйте checkpoints вручную.
 
-Сохраните credentials в защищённом менеджере, а временные файлы удалите согласно
-процессу вашей организации. Настройте [резервное копирование](backup.md) всех
-хранилищ. Самостоятельный UI не следует публиковать как пользовательский портал:
-SSO и разграничение доступа в нём пока отсутствуют.
+Подключите [первый тариф и правило](billing-configuration.md), затем проверьте
+CostReport/PriceList нужного namespace в продукте Billing. Следите за DataReady,
+возрастом pending, Kafka lag, sink, Redis dedupe и свободным местом ClickHouse.
+При заполнении ограниченной очереди сборщик останавливает продвижение курсора.
+События повторяются с тем же ID; после потери Redis или разрыва больше 31 дня
+нужна сверка перед replay. Настройте [резервное копирование](backup.md).
+
+## Перенос существующей истории
+
+Переход с отдельной базы Gator Cost выполняется в окно обслуживания:
+
+1. Остановите старый collector и admin UI; дайте workers доставить весь outbox,
+   затем остановите workers. Сохраните защищённые pg_dump баз `gatorcost` и
+   `openmeter`, конфигурацию OpenMeter и снимки остальных хранилищ.
+2. Установите новые CRD и RBAC. Запустите бинарный мигратор с прежним
+   CostConfiguration и ссылками на SQL Secret: `-mode=migrate-native -epoch=...`.
+   Он переносит архив отдельным потоком без начислений, сравнивает payload/hash,
+   количество записей и суммы каждого проекта. Подтверждение — checkpoint
+   kind=migration со `status.migration.verified: true`.
+3. Сохраните PostgreSQL Service/StatefulSet/PVC при удалении из Cost release
+   (`helm.sh/resource-policy: keep` в его установленном manifest), затем передайте
+   те же объекты в OpenMeter release. Не пересоздавайте сервер с пустым PVC.
+4. Переключите CostConfiguration на `storageMode: OpenMeter`, тот же `epoch` и
+   сохранённый `cutoverAt`; удалите `ledger`. Установите native collector с
+   отключёнными postgres/UI/workers. Мигратор сохраняет следующие минуты сессий,
+   metric cursors и остаток бесплатного объёма первого месяца.
+5. Сверьте архив и отчёты, проверьте загрузку/скачивание S3 до и после бесплатного
+   порога, проект с уже израсходованным порогом, restart и повторную доставку.
+6. Только после сверки и отсутствия SQL клиентов удалите **базу `gatorcost`** и
+   её DSN/reader credential. База `openmeter`, общий сервер и PVC сохраняются.
+
+Повторный запуск мигратора после verified marker не сбрасывает текущее состояние.
+Не запускайте старые workers после переключения. Бесплатный остаток первого
+частичного UTC-месяца хранится в metadata native customer; его цена не выдаёт
+ранее использованный объём заново. Следующий месяц использует полный лимит.
 
 ## Подключите стоимость заказа к Dashboard
 
@@ -292,17 +289,8 @@ Collector должен иметь read-only sourcePermissions на каждый 
 Для произвольного продукта создайте [BillingBinding](../reference/billing-binding.md)
 и MeteringPolicy. Убедитесь, что пользователь видит каталог и может создавать
 целевой CR. Откройте Create-форму и сравните компоненты с принятым тарифом.
-Прогноз не требует публикации административного Cost UI. URL адаптера задаёт
+Прогноз использует внутренний HTTP adapter Cost. URL адаптера задаёт
 оператор, перенаправления HTTP запрещены; секрет не попадает в браузер.
-
-Следите за Ready и памятью ClickHouse, состоянием sink worker, Kafka backlog и
-возрастом outbox. Готовность API OpenMeter сама по себе не гарантирует доступность
-агрегации. Увеличение лимитов не заменяет планирование ёмкости и backup.
-
-Для небольшого и среднего потока используйте sink.minCommitCount: 1000 и
-maxCommitWait: 1s: пакетная запись уменьшает количество вставок и служебных
-логов ClickHouse. После изменения конфигурационного Secret перезапустите sink.
-При восстановлении дождитесь обработки consumer lag; не сбрасывайте offsets.
 
 ## Подключить детализацию Dashboard
 

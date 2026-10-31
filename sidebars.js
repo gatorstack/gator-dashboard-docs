@@ -3,6 +3,11 @@ module.exports = {
     'index',
     'concepts',
     'getting-started',
+    { type: 'category', label: 'Биллинг: GVK и OpenMeter', collapsed: false, items: [
+      'billing/index', 'billing/architecture', 'billing/configuration',
+      'billing/metering-policies', 'billing/tariffs', 'billing/openmeter',
+      'billing/state-and-reports', 'billing/examples', 'billing/operations',
+    ] },
     { type: 'category', label: 'Руководство пользователя', collapsed: false, items: [
       'user-guide/login', 'user-guide/projects', 'user-guide/quotas',
       'user-guide/s3', 'user-guide/monitoring', 'user-guide/iam', 'user-guide/history', 'user-guide/costs',

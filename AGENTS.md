@@ -91,3 +91,13 @@ API, каталог, квоты, биллинг или эксплуатацию,
 `../other/cozy-study-k8s/private/kubeconfig`, сначала проверь
 целевой сервер; не переключай глобальный контекст. Данные Secret используй
 только локально. Наличие записи о прошлом деплое не доказывает состояние сейчас.
+
+## Cost 0.7
+
+Текущая архитектура: collector+CRD, CollectorCheckpoint/Lease для текущего
+состояния и bounded pending; история/принятые тарифы — OpenMeter events/ClickHouse.
+Отдельной БД gatorcost и прежнего admin UI/SQL workers нет. Включённый месячный
+объём исполняют native graduated prices; полный raw трафик виден в детализации.
+Shared PostgreSQL/PVC принадлежит OpenMeter и сохраняется; удаляется только
+старый database после verified archive/cost/S3/restart/replay сверки.
+Не смешивать эти правила с историческими описаниями 0.1–0.6 выше.
