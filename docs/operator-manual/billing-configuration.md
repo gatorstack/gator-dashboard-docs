@@ -415,7 +415,9 @@ Scrape, cache eviction и restart RGW могут потерять промежу
 метрики не заменяют полный журнал S3-запросов. Пропуск длиннее maxSampleAge
 помечается и начинает новый baseline без начисления за неизвестный участок.
 
-Проверьте `kubectl get metricmeteringpolicies` и Ready/invalidMeters в status,
+Проверьте `kubectl get metricmeteringpolicies`: Ready означает принятую конфигурацию
+и доступный GVK заказов; DataReady и invalidMeters показывают полноту измерений.
+Пустой бакет без counters может ожидать baseline, не блокируя установку. Проверьте
 затем CostReport/PriceList текущего проекта. Missing/stale/partial/неоднозначная
 ownership дают диагностику, а не бесплатную услугу. При недоступности TSDB
 collector повторяет запросы с durable checkpoint в пределах maxCatchUp;
