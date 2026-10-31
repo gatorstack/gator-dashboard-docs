@@ -289,3 +289,135 @@ CPU meter использует `priceRef.fieldPath` к первой аннота
 периоды. Проектные override заменяют весь набор: при их наличии новые ключи
 нужно включить и в соответствующие проектные планы. Исходные minute snapshots
 не переименовываются и не пересчитываются.
+
+## Потребление из метрик
+
+Gator Cost 0.6 поддерживает `MetricMeteringPolicy`. Сначала установите обновлённые
+CRD и collector, затем подключите источник метрик и политики. Уже работающие
+`MeteringPolicy` продолжают учитывать CR-сессии по прежним правилам.
+
+Источник должен предоставлять Prometheus HTTP API. Укажите его базовый URL,
+включая путь tenant, в административном CostConfiguration:
+
+```yaml
+spec:
+  metrics:
+    - name: platform
+      url: http://metrics.monitoring.svc:8481/select/0/prometheus
+      # Если API требует bearer, добавьте ссылку:
+      # bearerTokenSecretRef:
+      #   namespace: gator-cost
+      #   name: metrics-reader
+      #   key: token
+```
+
+Credential хранится в Secret. Выдайте ServiceAccount collector только `get`
+этого Secret в его namespace. Ссылка сама по себе не даёт Kubernetes RBAC.
+Не помещайте ключ в URL, labels, заказ или публичные метаданные.
+
+Пример политики хранения бакетов Ceph RGW:
+
+```yaml
+apiVersion: cost.gatorstack.dev/v1alpha1
+kind: MetricMeteringPolicy
+metadata:
+  name: bucket-storage
+spec:
+  dataSourceRef: {name: platform}
+  interval: 30s
+  delay: 60s
+  maxSampleAge: 120s
+  maxCatchUp: 24h
+  source:
+    group: s3.radosgw.m.crossplane.io
+    version: v1alpha1
+    resource: buckets
+    scope: Namespaced
+    namespaces: {names: [project-a]}
+    labelSelector:
+      matchLabels: {s3.gatorstack.dev/managed: 'true'}
+  billableWhen: >-
+    has(object.status) && has(object.status.atProvider) &&
+    has(object.status.atProvider.id) && object.status.atProvider.id != '' &&
+    has(object.status.atProvider.owner) && !has(object.metadata.deletionTimestamp)
+  dimensions:
+    project: {fieldPath: /metadata/namespace}
+    product: {value: s3}
+    instance: {fieldPath: /metadata/uid}
+  reporting:
+    orderTitlePath: /metadata/annotations/s3.gatorstack.dev~1title
+    tagsPath: /spec/forProvider/tags
+  tariffPlanRef: {name: s3}
+  metrics:
+    - id: storage
+      name: storage
+      displayName: Хранение S3
+      mode: GaugeIntegral
+      unit: GB-hour
+      divide: '1000000000'
+      timeUnit: 1h
+      priceRef: {key: storage}
+      selector:
+        metric: radosgw_usage_bucket_size
+        labels:
+          cluster: {value: storage-cluster}
+          bucket: {fieldPath: /status/atProvider/bucket}
+          uid: {fieldPath: /status/atProvider/owner}
+```
+
+Имена метрик и labels зависят от установленного экспортера. Проверьте их до
+включения политики. Collector должен иметь get/list/watch исходных Bucket и
+namespace; адрес TSDB должен быть доступен из его Pod. `product` — ID Product
+каталога. Проект определяется namespace заказа; labels метрик его не подменяют.
+
+Для входящего трафика используйте `CounterDelta`, `unit: MB`,
+`divide: '1000000'`, метрику `ceph_rgw_op_per_bucket_put_obj_bytes`; для исходящего —
+`ceph_rgw_op_per_bucket_get_obj_bytes`. `timeUnit` для counter не задаётся.
+Selector каждого направления содержит bucket и cluster. Добавьте `ownership`
+с тем же selector размера, что в примере выше: он подтверждает bucket+owner+cluster
+перед чтением трафика. Каждый meter имеет отдельные id/name/priceRef.key.
+
+Ставки соответствующего семейства TariffPlan:
+
+```yaml
+rates:
+  - {key: storage, unit: GB-hour, price: '0.01'}
+  - key: incoming
+    unit: MB
+    price: '1'
+    includedQuantity: '10'
+    includedPeriod: MONTH
+  - key: outgoing
+    unit: MB
+    price: '1'
+    includedQuantity: '10'
+    includedPeriod: MONTH
+```
+
+Добавьте их в новый полный план с будущим `validFrom`, `currency: RUB` и нужным
+`key`. Для проектных override необходим полный набор ставок. `includedQuantity`
+применяется к измеряемому потреблению: 10 MB каждого направления на проект,
+суммарно по его бакетам, за календарный месяц UTC. Новая ревизия плана, удаление
+бакета или перезапуск collector не обновляют лимит. Изменение названия ключа
+создаёт другую позицию; не используйте переименование для обычной смены цены.
+
+GB и MB — десятичные единицы; дробные части учитываются без округления вверх.
+Gauge интегрируется удержанием последнего наблюдения до следующего scrape,
+по фактической длительности, без правила целой начатой минуты. Трафик относится
+к правой границе sample-интервала. В детализации класса показывается объём сверх
+включённого лимита; исходный и начисляемый объёмы сохраняются для сверки.
+
+Первое накопленное значение counter становится baseline и не тарифицируется
+задним числом. Новая исходная серия тоже начинает с baseline. Перед приёмочным
+тестом создайте небольшую операцию и дождитесь наблюдения счётчика; затем
+передавайте тестовый объём. Reset обрабатывается отдельно по каждой серии.
+Scrape, cache eviction и restart RGW могут потерять промежуточный трафик;
+метрики не заменяют полный журнал S3-запросов. Пропуск длиннее maxSampleAge
+помечается и начинает новый baseline без начисления за неизвестный участок.
+
+Проверьте `kubectl get metricmeteringpolicies` и Ready/invalidMeters в status,
+затем CostReport/PriceList текущего проекта. Missing/stale/partial/неоднозначная
+ownership дают диагностику, а не бесплатную услугу. При недоступности TSDB
+collector повторяет запросы с durable checkpoint в пределах maxCatchUp;
+retention TSDB должна быть длиннее этого окна. Для более длинного разрыва
+сначала выполните сверку источника; не удаляйте checkpoints/историю ради replay.

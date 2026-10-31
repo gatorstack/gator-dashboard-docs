@@ -355,3 +355,21 @@ Namespaced-объект каталога для предварительной �
 компонента в исходном CR. Непустая строка заменяет `displayName`; при отсутствии
 или другом типе остаётся `displayName`. Выбор ставки задаётся отдельно через
 `priceRef`. Для прогноза разрешите этот путь в проекции BillingBinding.
+
+### MetricMeteringPolicy
+
+Cluster-scoped `cost.gatorstack.dev/v1alpha1`. Подключает измеряемое потребление
+через Prometheus-compatible API. `source` выбирает GVK заказов, `dimensions` и
+`reporting` — их публичную идентичность и метки; количество берётся из метрик.
+`dataSourceRef` ссылается на CostConfiguration.spec.metrics (URL и SecretRef).
+`metrics` содержит exact selectors, необязательный ownership witness,
+`GaugeIntegral`/`CounterDelta`, единицу, divide и timeUnit для gauge.
+`interval`/`delay`/`maxSampleAge`/`maxCatchUp` определяют сбор и восстановление.
+`status.conditions`, `collectedMeters`, `invalidMeters`, `lastCollectionTime`
+показывают результат. Документированная конфигурация —
+[потребление из метрик](../operator-manual/billing-configuration.md#потребление-из-метрик).
+
+У rates в TariffPlan/ProjectTariffPlan `includedQuantity` вместе с
+`includedPeriod: MONTH` задают включённое измеряемое количество на проект и
+ключ ставки в месяце UTC. Измеряемые единицы включают GB-hour/MB; старые
+*-minute сохраняются. PriceList публикует эти поля и `conditions` для сверки.
