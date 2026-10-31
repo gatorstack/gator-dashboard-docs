@@ -128,7 +128,8 @@ oc --context "$GATOR_CONTEXT" -n team-a apply --dry-run=server -f database-metri
 ## Хранилище и административная Grafana
 
 Комплект `gator-infrastructure/charts/monitoring` создаёт VMCluster/platform,
-VMAgent/platform и ConfigMap с 13 готовыми дашбордами. Grafana устанавливается
+VMAgent/platform и ConfigMap с 13 штатными дашбордами; при bucketStats.enabled
+добавляется четырнадцатый S3 · Бакеты. Grafana устанавливается
 отдельным официальным chart. Сначала установите оператор по инструкции выше.
 Потребуются RWO StorageClass, доступ сборщика к exporters и DNS/TLS для Grafana.
 
@@ -277,7 +278,7 @@ curl --fail https://grafana.example.org/api/health
 
 - OpenStack: Libvirt Dashboard с выбором региона, проекта, compute и VM.
 - Ceph: Cluster Advanced, Pools Overview/Details, OSD Overview/Device Details,
-  Host Overview/Details, RGW Overview/Instance Detail.
+  Host Overview/Details, RGW Overview/Instance Detail; при bucketStats.enabled — S3 · Бакеты.
 - VictoriaMetrics: Cluster, VMAgent, Operator.
 
 Это community dashboard 12538 revision 1 и официальные dashboards Ceph 20.2.4 /
@@ -295,6 +296,109 @@ stream aggregation или текущих PG recovery states, могут не и�
 кластера; Grafana является административной консолью и показывает все проекты.
 Фильтр проекта в дашборде не ограничивает права. Доступ потребителей проектов
 требует отдельной реализации изоляции из следующего раздела.
+
+## Трафик, размер и квоты бакетов S3
+
+Дашборд **S3 · Бакеты** находится в папке Ceph, UID `ceph-rgw-buckets`.
+Он добавляет выбор кластера, владельца (RGW UID/Account) и бакета, графики
+GET/PUT трафика и операций, размер объектов, их количество и таблицу
+индивидуальных квот. Он поставляется вместе с остальными dashboard ConfigMap.
+
+Трафик берётся из нативных `ceph_rgw_op_per_bucket_*` counters ceph-exporter.
+Включите bucket counters в контексте своего Ceph:
+
+```sh
+sudo cephadm shell -- ceph config set client.rgw rgw_bucket_counters_cache true
+```
+
+В Ceph 20.2.4 само хранилище counters создаётся при старте RGW, хотя настройка
+объявлена runtime-updatable. Поэтому после первой активации нужен restart RGW.
+При нескольких gateways выполняйте перезапуск по одному с проверкой S3.
+При одном gateway возникает короткая пауза S3; cephadm требует явный
+`--force` для остановки единственного RGW. Запланируйте это окно перед активацией.
+При неизменном flag повторная установка мониторинга restart не требует.
+
+Для размера, количества объектов и квот используется готовый
+[RGW exporter](https://github.com/yeti890/rgw-exporter) через HTTPS Admin API.
+Создайте отдельную identity с Admin Ops caps `buckets=read;usage=read`.
+Например, на узле с административным доступом к Ceph:
+
+```sh
+umask 077
+sudo cephadm shell -- radosgw-admin user create \
+  --uid gator-rgw-metrics --display-name 'Bucket monitoring' \
+  --caps 'buckets=read;usage=read' > /secure/rgw-metrics-user.json
+jq -ej '.keys[0].access_key' /secure/rgw-metrics-user.json > /secure/rgw-access-key
+jq -ej '.keys[0].secret_key' /secure/rgw-metrics-user.json > /secure/rgw-secret-key
+```
+
+Существующую identity и её ключи сохраняйте при повторной настройке. На машине
+с административным Kubernetes-контекстом создайте Secret из защищённых файлов
+без завершающего перевода строки:
+
+```sh
+oc --context "$GATOR_CONTEXT" -n monitoring create secret generic rgw-bucket-stats \
+  --from-file=access-key=/secure/rgw-access-key \
+  --from-file=secret-key=/secure/rgw-secret-key
+```
+
+Добавьте в `monitoring-values.yaml` и повторите установку gator-monitoring:
+
+```yaml
+bucketStats:
+  enabled: true
+  secretName: rgw-bucket-stats
+  env:
+    RGW_ENDPOINT: https://s3.example.org
+    PUB_ENDPOINT: s3.example.org
+    REGION: region-a
+    CLUSTER_NAME: ceph-a
+    LISTEN_IP: 0.0.0.0
+    LISTEN_PORT: "9240"
+    START_DELAY: "0"
+    BUCKETS_COLLECTOR_INTERVAL: "60"
+    USAGE_COLLECTOR_INTERVAL: "300"
+    USERS_COLLECTOR_ENABLE: "false"
+    RGW_CONNECTION_TIMEOUT: "15"
+    INSECURE: "false"
+```
+
+Chart использует закреплённый digest образа, запускает exporter с Secret refs
+и создаёт VMStaticScrape. `CLUSTER_NAME` должен совпадать с меткой `cluster`
+нативных Ceph targets. Kubernetes API token контейнеру не монтируется.
+TLS Admin API проверяется; его сертификат должен быть доверен контейнеру.
+
+Проверьте rollout и сбор:
+
+```sh
+oc --context "$GATOR_CONTEXT" -n monitoring rollout status deployment/rgw-bucket-stats
+oc --context "$GATOR_CONTEXT" -n monitoring get vmstaticscrape rgw-bucket-stats
+oc --context "$GATOR_CONTEXT" -n monitoring logs deployment/rgw-bucket-stats --tail=20
+```
+
+| Показатель | Серия |
+| --- | --- |
+| Скачивание / загрузка | `ceph_rgw_op_per_bucket_get_obj_bytes` / `ceph_rgw_op_per_bucket_put_obj_bytes` |
+| Логический размер объектов | `radosgw_usage_bucket_size` |
+| Количество объектов | `radosgw_usage_bucket_objects` |
+| Индивидуальная квота включена | `radosgw_usage_bucket_quota_enabled` |
+| Лимит размера / объектов | `radosgw_usage_bucket_quota_size` / `radosgw_usage_bucket_quota_objects` |
+
+`rate(...)` даёт байты/с, `increase(...)` — объём за выбранный период в пределах
+собранной истории. Эти counters описывают байты объектов, не TCP/TLS overhead.
+Cache eviction/restart может сбрасывать их; трафик до включения не восстанавливается.
+
+Stats запрашиваются раз в 60 секунд, затем собираются VMAgent раз в 30 секунд.
+Дополнительно действует асинхронная задержка учёта RGW. Экспортер кэширует последний
+успешный ответ; состояние UP показывает доступность процесса, ошибки Admin API
+нужно проверять в его logs.
+
+Размер и объекты следуют `rgw.main` bucket stats; при versioning значения могут
+отличаться от списка только текущих объектов. `size_actual` не представляет
+физический расход всего Ceph с репликацией. Дашборд показывает логический размер.
+В таблице квоты отключённый или отрицательный индивидуальный лимит отображается
+как «Не задан». Суммарные account/user quotas учитываются отдельно;
+наличие таких ограничений не определяется по одному bucket_quota.
 
 ## Планирование изоляции проектов
 
