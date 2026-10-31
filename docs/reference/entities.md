@@ -302,10 +302,13 @@ CEL видит исходный объект, не выполняет lookup. О
 Секция `related-resources` поддерживает `actions: [{title, pageRef: {name}}]`.
 Текст пустого lookup можно задать через `x-dashboard-empty-text` на поле.
 
-`x-dashboard-widget: tag-map` применяется к массиву строк: форма показывает
-пары ключ/значение и сериализует их как `key=value`. Ограничения ключей и значений
-задаются `items.pattern`, длиной и `maxItems` исходной JSON Schema. Для объектного
-словаря используется обычный widget `key-value`.
+`x-dashboard-widget: tag-map` показывает метки плашками с общим редактором
+ключа/значения. Для `type: array` сохраняется массив строк `key=value`; для
+`type: object` с `additionalProperties: {type: string}` — JSON-словарь.
+Ограничения массива задают `items`/`maxItems`/`uniqueItems`, словаря —
+`propertyNames`/`additionalProperties`/`maxProperties`. Widget не меняет формат
+целевого CR и не зависит от имени продукта. Непомеченные словари используют
+обычный редактор пар ключ/значение.
 
 Колонка `resource-link` дополнительно принимает `link.pageRef`, `link.namePath`,
 `link.uidPath`: переход к связанному ресурсу того же продукта и проекта с его UID.
