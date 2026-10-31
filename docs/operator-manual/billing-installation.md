@@ -5,8 +5,9 @@ Gator Cost и OpenMeter устанавливаются отдельно от Das
 поставка использует namespaces `gator-cost` и `openmeter`; внутренние имена
 сервисов и NetworkPolicy рассчитывают на эти имена.
 
-Биллинг не подключает SSO Dashboard и пользовательский tenant-доступ.
-Его UI открывается локальным port-forward. Внешние платежи сейчас не настроены.
+Самостоятельный административный UI Cost открывается локальным port-forward.
+Продукт Billing в Dashboard использует его обычный вход и Kubernetes RBAC для
+проектной детализации через CostReport. Внешние платежи сейчас не настроены.
 
 ## Требования
 
@@ -101,13 +102,19 @@ spec:
     batchSize: 32
 ```
 
+Для приватного образа подготовьте Secret `registry-reader` типа
+`kubernetes.io/dockerconfigjson` в namespace `gator-cost` с правом чтения образа.
+В values хранится только ссылка; credential не должен попадать в Git.
+
 `clusterID` должен быть стабильным уникальным именем вашего кластера.
 Сохраните `cost-values.yaml`, заменив StorageClass на свой:
 
 ```yaml
 image:
-  repository: valerahex/gator-cost
-  tag: 20261028-01
+  repository: ghcr.io/gatorstack/gator-cost
+  tag: 20261031-02
+imagePullSecrets:
+- name: registry-reader
 postgres:
   storageClass: your-storage-class
   storageSize: 10Gi
@@ -296,3 +303,26 @@ Collector должен иметь read-only sourcePermissions на каждый 
 maxCommitWait: 1s: пакетная запись уменьшает количество вставок и служебных
 логов ClickHouse. После изменения конфигурационного Secret перезапустите sink.
 При восстановлении дождитесь обработки consumer lag; не сбрасывайте offsets.
+
+## Подключить детализацию Dashboard
+
+Обновите CRD Cost из установленного комплекта до версии с `CostReport` и
+обновите Cost chart. Затем из комплекта Gator Products установите Billing
+в тот же namespace каталога, где установлен Dashboard:
+
+```sh
+helm dependency build products/billing/chart
+helm upgrade --install gator-billing products/billing/chart \
+  --kube-context "$GATOR_CONTEXT" --namespace gator-dashboard
+```
+
+В существующей umbrella-установке подключите этот chart как зависимость её
+release; не создавайте второй release поверх уже принадлежащих ей объектов.
+Обновите Dashboard до версии с общим report renderer. Убедитесь, что политики
+учёта используют ID реальных Product в `dimensions.product`.
+
+Назначьте нужным пользователям или группам `billing.viewer` через RoleBinding
+в namespace проекта. Добавьте billing-роли в каталог разрешённых назначений
+вашей установки. Обычного права читать Project недостаточно для CostReport.
+Контроллер Cost должен читать/удалять CostReport и изменять их status; доступ к
+исходным GVR нужен для проверки существования заказов.

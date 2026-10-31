@@ -17,7 +17,7 @@ module.exports = {
     ] },
     { type: 'category', label: 'Справочник', items: [
       'reference/entities', 'reference/roles', 'reference/helm-values',
-      'reference/annotations', 'reference/history', 'reference/quotas', 'reference/resource-map', 'reference/billing-binding',
+      'reference/annotations', 'reference/history', 'reference/quotas', 'reference/resource-map', 'reference/billing-binding', 'reference/cost-report',
     ] },
     'faq',
   ],

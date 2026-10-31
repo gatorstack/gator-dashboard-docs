@@ -1,0 +1,66 @@
+# CostReport и детализация
+
+`CostReport` (`cost.gatorstack.dev/v1alpha1`) — временный namespaced запрос
+детализации. Namespace задаёт проект: запрос не принимает чужой projectID.
+Спецификация после создания неизменяема. Контроллер удаляет запрос через час;
+исходные ресурсы и история учёта сохраняются.
+
+```yaml
+apiVersion: cost.gatorstack.dev/v1alpha1
+kind: CostReport
+metadata:
+  name: october-compute
+  namespace: team-a
+spec:
+  start: "2026-10-01T00:00:00Z"
+  end: "2026-10-31T00:00:00Z"
+  resolution: DAY
+  groupBy: component
+  product: iaas
+  page: 1
+  pageSize: 25
+```
+
+| Поле | Значение |
+| --- | --- |
+| `start`, `end` | Начало включено, конец исключён; прошедший период до 31 дня, UTC |
+| `resolution` | `DAY` или `HOUR` |
+| `groupBy` | `product`, `component`, `tag`, `order` |
+| `product` | ID Product Gator, например `iaas`, а не отображаемое имя Compute |
+| `component` | Ключ тарифной позиции, например `cpu`, `ram`, `SSD` |
+| `tagKey`, `tagValue` | Ключ и необязательное значение тега заказа |
+| `orderUID` | Историческая идентичность заказа |
+| `page`, `pageSize` | Страница от 1; до 100 строк на странице |
+
+`status.conditions[type=Ready]` и `status.observedGeneration` подтверждают результат.
+`status.result` содержит decimal-строки сумм, валюту, время снимка, `rows`,
+`series`, `points`, полный `totalRows`, `totalCost` и `estimatedCost`.
+Итог и график относятся ко всем строкам, независимо от страницы. На графике
+показаны восемь крупнейших групп; остальные входят в «Остальное».
+Разные единицы количества не складываются; количество выводится у компонентов.
+
+Количество берётся из сохранённых минут Cost, стоимость рассчитывает OpenMeter
+invoice simulation по историческим снимкам ставок. Это предварительная стоимость
+потребления. Выпущенный счёт остаётся авторитетным. Запрос не создаёт usage,
+charges или invoices. `pendingMinutes` отмечает очередь доставки, `issueCount` —
+проблемы учёта, `legacyTagMinutes` и `invalidTagMinutes` — ограничения меток.
+
+Для запроса нужны `create/get/list/watch costreports` в namespace проекта.
+Права на исходные заказы назначаются отдельно. `billing.auditor` и последующие
+уровни billing-ролей дают доступ к отчётам; привязки назначаются стандартным RBAC.
+Изменение `costreports/status` разрешено только контроллеру.
+
+## Декларативный экран отчёта
+
+`ProductPage` с `x-dashboard-view: report` задаёт `x-dashboard-report`:
+`requestPageRef` на canonical Create и `resultPageRef` на Detail одного
+ProductResource текущего проекта. `input` задаёт имена полей запроса;
+`groupings`, `filters` и `defaults` — управление запросом. `output` содержит
+JSON Pointer к сводке, строкам, рядам, точкам, пагинации и предупреждениям.
+`output.chart` описывает пути ID/подписей рядов, времени и значений точек.
+`catalog: products` разрешает ID продукта в отображаемое имя каталога.
+`drilldown` переносит идентификатор строки в поле нового запроса.
+
+Эта возможность общая для отчётов любого продукта. Браузер использует обычные
+canonical create и Kubernetes watch с правами пользователя. Учётные данные
+Cost/OpenMeter в браузер и схемы каталога не передаются.
