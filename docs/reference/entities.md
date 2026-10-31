@@ -206,7 +206,10 @@ creationAttempted и finalizer защищают восстановление п�
 | Поле | Назначение |
 | --- | --- |
 | `metadata.name` | Локальное техническое имя, например alice |
-| `fullName` | Полное имя |
+| `fullName` | Полное имя; личный кабинет составляет его из firstName и lastName |
+| `firstName`, `lastName` | Имя и фамилия, до 100 символов каждое |
+| `email` | Контактная почта, до 254 символов; не меняет identity |
+| `phone` | Контактный телефон, до 40 символов |
 | `identities[]` | Внешние identities вида connector-id:immutable-user-id |
 | `disabled` | Запрет новых токенов/refresh |
 | `htpasswdSecretRef.name` | Имя Secret локального пароля |

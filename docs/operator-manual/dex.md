@@ -6,9 +6,9 @@ Gator Dex добавляет локальные учётные записи, г�
 
 Используйте административный контекст `GATOR_CONTEXT` из
 [руководства установки](installation.md). Нужны Ingress, TLS для обоих доменов
-и StorageClass для PVC Dex. Команды установки Dex выполняются из каталога
+и доступ администратора для установки CRD Dex. Команды установки Dex выполняются из каталога
 `gator-dex` полученного комплекта. Для этого примера используется образ
-`valerahex/gator-dex:study-local-oidc-20261015`.
+`ghcr.io/gatorstack/gator-dex:2.46.0-gator.5`.
 
 ## 1. Подготовьте клиент OIDC
 
@@ -38,6 +38,16 @@ oc --context "$GATOR_CONTEXT" -n gator-dex create secret tls dex-tls \
   --cert=tls/dex.crt --key=tls/dex.key
 ```
 
+Для приватного registry войдите в него интерактивно и создайте отдельный pull
+Secret в namespace Dex. Не публикуйте полученный конфигурационный файл:
+
+```sh
+docker --config registry login ghcr.io
+oc --context "$GATOR_CONTEXT" -n gator-dex create secret generic gator-registry \
+  --type=kubernetes.io/dockerconfigjson \
+  --from-file=.dockerconfigjson=registry/config.json
+```
+
 ## 2. Настройте Dex
 
 Сохраните `dex-config.yaml`:
@@ -45,9 +55,10 @@ oc --context "$GATOR_CONTEXT" -n gator-dex create secret tls dex-tls \
 ```yaml
 issuer: https://dex.example.org
 storage:
-  type: sqlite3
+  type: kubernetes
   config:
-    file: /var/dex/dex.db
+    inCluster: true
+    crdHandling: check
 web:
   http: 0.0.0.0:5556
 frontend:
@@ -62,6 +73,7 @@ oauth2:
   grantTypes: [authorization_code, refresh_token, password]
   responseTypes: [code]
 kubernetesGroups:
+  accountManagement: true
   localConnectorID: local
   mappingMethod: claim
   timeout: 10s
@@ -83,19 +95,22 @@ connectors:
 
 ```yaml
 image:
-  repository: valerahex/gator-dex
-  tag: study-local-oidc-20261015
+  repository: ghcr.io/gatorstack/gator-dex
+  tag: 2.46.0-gator.5
 configSecretName: gator-dex-config
+imagePullSecrets:
+  - name: gator-registry
 envFrom:
   - secretRef:
       name: gator-dex-client-credentials
 localUsers:
   enabled: true
   passwordNamespace: gator-dex-users
+rbac:
+  kubernetesStorage: true
+  accountManagement: true
 persistence:
-  enabled: true
-  size: 1Gi
-  storageClass: ""
+  enabled: false
 ingress:
   enabled: true
   className: nginx
@@ -105,10 +120,13 @@ ingress:
       hosts: [dex.example.org]
 ```
 
-Пустой `storageClass` использует стандартный класс кластера. Укажите конкретный,
-если стандартного нет. Текущий chart Dex использует одну реплику и SQLite на PVC.
+Chart использует одну реплику. Runtime state, refresh-сессии и ключи подписи
+сохраняются в namespaced CRD `dex.coreos.com/v1`; PVC для новой установки не нужен.
+Runtime не создаёт CRD и имеет storage-права только в namespace Dex.
 
 ```sh
+oc --context "$GATOR_CONTEXT" apply --server-side --field-manager=gator-dex-crds \
+  --force-conflicts -f ./charts/gator-dex/crds/
 helm upgrade --install gator-dex ./charts/gator-dex \
   --kube-context "$GATOR_CONTEXT" -n gator-dex \
   -f dex-values.yaml --set-file configFile=dex-config.yaml --wait
@@ -218,3 +236,46 @@ Secret/envFrom. Для OIDC-провайдера укажите issuer, clientID
 Локальные группы задаются через Group.users; группы upstream заменяются ими.
 Не связывайте пользователей по совпадению email: identity использует ID
 коннектора и неизменяемый ID провайдера.
+
+
+## Самостоятельное редактирование профиля
+
+`kubernetesGroups.accountManagement: true` включает API личного кабинета и
+объявляет его в OIDC discovery. Соответствующее `rbac.accountManagement: true`
+выдаёт сервису Dex право patch User. Пользователям это право не выдаётся:
+Dex принимает только действующий refresh token вместе с credentials его
+confidential клиента, сам сопоставляет User и разрешает изменить firstName,
+lastName, email и phone. UID/resourceVersion защищают от замены учётной записи
+и параллельной перезаписи. Заблокированный или удалённый User не продолжает вход.
+
+Общие операции IAM и все ресурсные API консоли сохраняют native Kubernetes
+RBAC и права вошедшего пользователя. Личный кабинет не позволяет менять группы,
+идентичности, пароль, флаг блокировки или назначения ролей.
+
+User-Agent клиента при входе сохраняется в `OfflineSessions.Refresh[].userAgent`,
+до 1024 символов. Dashboard передаёт браузерный заголовок при обмене токенов;
+ротация его сохраняет. Значение не добавляется в JWT и не влияет на RBAC.
+
+Список активных сессий — безопасная проекция `RefreshToken` всех identities User.
+Включённый режим сохраняет независимые входы одного клиента и поддерживает
+старые OfflineSessions с ключами clientID. Отзыв удаляет выбранный refresh token;
+консоль проверяет его существование перед новым запросом. Уже выданный JWT у
+внешнего потребителя действует до exp: оставьте короткий idTokens lifetime.
+
+## Переход с SQLite и резервное копирование
+
+Перед сменой storage остановите изменения конфигурации и сохраните резервную
+копию прежней базы/PVC принятым у вас защищённым способом. Для существующей
+установки оставьте `persistence.enabled: true` на переходном этапе: прежний PVC
+сохранится, хотя Kubernetes storage им не пользуется. Установите CRD, включите
+storage RBAC, обновите конфигурацию через Helm и проверьте readiness/discovery.
+Пользователям потребуется войти снова; автоматического переноса SQLite нет.
+Старый PVC удаляют отдельно после проверки новой установки и решения об откате.
+
+Для нового хранилища сохраняйте в защищённой резервной копии все ресурсы
+`dex.coreos.com/v1` namespace Dex, User/Group и Secrets credentials. Содержимое
+native Dex CRD включает refresh secrets, signing keys и данные коннекторов.
+Не выдавайте их чтение обычным пользователям, не публикуйте дампы и не выводите
+полные объекты в журналы. Настройки профиля получают только разрешённые поля.
+После восстановления или обновления проверьте сохранение сессии при перезапуске
+Dex и возможность отзыва одного входа при работающем втором входе.

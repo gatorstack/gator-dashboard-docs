@@ -9,7 +9,7 @@ module.exports = {
       'billing/state-and-reports', 'billing/examples', 'billing/operations',
     ] },
     { type: 'category', label: 'Руководство пользователя', collapsed: false, items: [
-      'user-guide/login', 'user-guide/projects', 'user-guide/quotas',
+      'user-guide/login', 'user-guide/profile', 'user-guide/projects', 'user-guide/quotas',
       'user-guide/s3', 'user-guide/monitoring', 'user-guide/iam', 'user-guide/history', 'user-guide/costs',
     ] },
     { type: 'category', label: 'Руководство администратора', items: [
