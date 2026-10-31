@@ -402,170 +402,146 @@ Stats запрашиваются раз в 60 секунд, затем соби�
 
 ## Изоляция проектов
 
-Проектный контур использует отдельный VictoriaMetrics tenant для каждой пары
-namespace UID и UID объекта Project. Tenant 0 остаётся административным. Метки
-помогают проверить принадлежность, а доступ ограничивают серверная авторизация
-и NetworkPolicy. Общая Grafana предназначена администраторам.
+Каждый проект получает отдельный числовой tenant VictoriaMetrics. Tenant 0 и
+общая Grafana остаются административными. Проектный поток обслуживают штатные
+`VMAgent/projects`, `VMAuth/projects` и `VMUser/project`; отдельный сервис
+`gator-project-metrics` не требуется.
 
-Интеграция `providers/monitoring/chart` из комплекта gator-products создаёт
-неизменяемый `MetricsTenant` с именем `project` в каждом действующем проекте.
-Она выделяет положительный accountID в ConfigMap `gator-metrics-registry`
-namespace мониторинга. Старые записи и номера сохраняются после удаления
-проекта. Сохраните registry в резервной копии вместе с VictoriaMetrics и
-восстанавливайте его до запуска сборщика. Пустой registry поверх существующего
-хранилища может нарушить соответствие tenant; не используйте его как ремонт.
+Реестр `monitoring/gator-metrics-registry` хранит accountID для пары namespace UID
+и Project UID. Номера не переиспользуются после удаления проекта. Резервируйте
+реестр вместе с данными VictoriaMetrics и восстанавливайте его до сборщиков.
+Пустой реестр поверх существующего хранилища использовать нельзя.
 
-### Проверка владельца
+### Маршрутизация записи
 
-Для libvirt сборщик объединяет domain-серии с `libvirt_domain_info_meta` из
-того же scrape. Пара region/project_uuid проверяется по фактическому проекту
-Keystone, полученному с установленными application credentials. `project_name`
-и tenant labels исходного экспортера не определяют доступ.
+Экспортёр libvirt должен добавлять `project_uuid` на каждую domain metric.
+Provisioning проверяет реальный Keystone project через application credentials
+и формирует mapping `region + project_uuid → accountID`. `project_name` не
+используется для авторизации. Обычный relabeling не умеет объединять разные
+серии: если UUID есть только в info-метрике, сначала обновите экспортер.
 
-Для S3 каждый scrape заново читает bucket stats из RGW Admin Ops API. Владелец
-Account ID связывается с namespace UID через служебный native Account CR
-в namespace S3-провайдера. Эти Account CR и credentials должны оставаться
-недоступны для изменения потребителям. В проект попадают размер, объекты,
-индивидуальные квоты и native per-bucket counters собственных бакетов, в том
-числе созданных S3-клиентом внутри этого аккаунта.
+В S3 каждому проекту назначается отдельный RGW tenant, закреплённый за UID
+namespace и Project. Native Account и root User создаются внутри него.
+Ключи этих пользователей создают бакеты в своём tenant автоматически. Native
+bucket counters содержат label `tenant`; bucket stats связываются по Account ID.
+Неизвестные связи отбрасываются. Общие Ceph OSD/pool/host метрики проектам не
+передаются. Передача существующего бакета другому проекту требует отдельной
+миграции данных и проверки накопленных counters; изменение mapping не является
+такой миграцией.
 
-Смена владельца или повторное использование имени другим проектом помещает
-бакет в карантин: старый counter cache не должен раскрыть новому владельцу
-накопленную историю трафика. Такой перенос требует отдельной проверки
-администратором, сброса старого cache и согласованного восстановления lineage.
-Неизвестные владельцы, неоднозначные связи и общие OSD/PG/host/pool метрики
-остаются в административном контуре. Ownership обновляется каждые 30 секунд;
-через 90 секунд без успешного обновления проектный scrape прекращается.
+VMAgent собирает endpoints напрямую. Metric relabeling удаляет входные
+`vm_*`/`gator_*`, назначает доверенный `vm_account_id`, `vm_project_id=0` и
+проектные labels. Remote-write отправляет только подтверждённые ряды в
+`/insert/multitenant/prometheus/api/v1/write`; автоматические scrape series без
+проекта отбрасываются. Исходная административная запись в tenant 0 сохраняется.
 
-### Установка проектного контура
+### Чтение через VMAuth
 
-Предварительно установите VMCluster `platform` и VMAgent административного
-контура в `monitoring`, native Project и RGW Account API, а также провайдеры
-OpenStack/S3. CNI должен применять NetworkPolicy. На хостах общих экспортёров также ограничьте вход на metrics-порты
-адресами доверенных сборщиков: это защищает endpoint от ВМ OpenStack и других
-клиентов вне Kubernetes. Для host-network listeners нужны IPv4/IPv6 INPUT rules;
-для Docker published ports — правила DOCKER-USER с учётом DNAT. Настройка должна
-сохраняться после reboot и применяться до старта exporter containers.
-Проектные роли не должны
-позволять менять NetworkPolicy, provider status, служебные credentials,
-MetricsTenant или scrape-конфигурацию. Администраторы кластера и VPN доверены.
+`VMUser/project` размещается в namespace проекта и принадлежит его Project UID.
+Уникальный username не зависит от повторяемого имени `project`. Оператор
+генерирует пароль в Secret `vmuser-project`; пароль не записывается в VMUser.
+Единственный target указывает на `/select/<accountID>/prometheus/`. Allowlist
+разрешает query, query_range, series, labels и label values. Входные AccountID и
+ProjectID headers заменяются фиксированными значениями. Anonymous/default route
+отсутствует; write, export и произвольные tenant paths не открываются.
 
-Используйте два разных случайных service token. При обновлениях сохраняйте
-существующие Secret. Пример первоначального создания из защищённых файлов:
-
-```sh
-umask 077
-openssl rand -hex 48 > scrape-token
-openssl rand -hex 48 > data-token
-oc --context "$GATOR_CONTEXT" -n monitoring create secret generic gator-project-metrics \
-  --from-file=scrape-token --from-file=data-token
-oc --context "$GATOR_CONTEXT" -n gator-dashboard create secret generic gator-data-project-metrics \
-  --from-file=token=data-token
-rm scrape-token data-token
-```
-
-В `monitoring` нужен Secret `rgw-bucket-stats` с ключами `access-key`, `secret-key`
-и read-only RGW identity из раздела выше. Интеграция использует Admin Ops подпись
-SigV2 по HTTPS; соответствующий режим должен поддерживаться RGW. В namespace
-проектов должны существовать служебные Secret OpenStack, созданные provisioning:
-поле `config` содержит auth_url, tenant_id, application_credential_id и
-application_credential_secret. Их значения в схемы UI не передаются.
-
-Сохраните `project-metrics.yaml`, заменив адреса своими:
+Пример reader для уже выделенного tenant 1001:
 
 ```yaml
-dashboardNamespace: gator-dashboard
-# Если registry образов требует входа, укажите существующий imagePullSecret.
-imagePullSecrets: []
-config:
-  s3SystemNamespace: gator-s3-system
-  inventoryMaxAge: 90
-  vmselect: http://vmselect-platform.monitoring.svc:8481
-  protectedExporterIPs: [10.0.0.10/32, 10.0.0.20/32]
-  openstack:
-    - region: cloud-1
-      authURL: http://10.0.0.10:5000
-      secretName: openstack-cloud-1
-  libvirt:
-    - name: compute-1
-      region: cloud-1
-      url: http://10.0.0.10:9177/metrics
-  rgw:
-    endpoint: https://s3.example.com
-    region: us-east-1
-    cluster: storage-1
-    counters: [http://10.0.0.20:9926/metrics]
+apiVersion: operator.victoriametrics.com/v1beta1
+kind: VMUser
+metadata:
+  name: project
+  namespace: team-a
+  labels:
+    monitoring.gatorstack.dev/reader: projects
+spec:
+  username: project-replace-with-namespace-uid
+  generatePassword: true
+  targetRefs:
+    - static:
+        url: http://vmselect-platform.monitoring.svc:8481/select/1001/prometheus/
+      paths:
+        - /api/v1/query
+        - /api/v1/query_range
+        - /api/v1/series
+        - /api/v1/labels
+        - /api/v1/label/[^/]+/values
+      headers: ['AccountID: 1001', 'ProjectID: 0']
 ```
 
-`protectedExporterIPs` перечисляет все внешние IP с общими экспортерами.
-Проектные egress policies закрывают TCP 9100, 9177, 9283 и 9926 на этих адресах.
-Остальные TCP-порты и UDP доступны. Политики backend ограничивают VictoriaMetrics,
-VMAgent и общий bucket exporter доверенными monitoring pods; адаптер доступен
-также pods Dashboard. Служебные workers биллинга могут читать административные
-метрики. Пользовательские namespaces не должны добавлять обходные allow policies.
-
-Из корня поставки gator-products выполните:
-
-```sh
-oc --context "$GATOR_CONTEXT" apply -f providers/monitoring/chart/crds/
-helm upgrade --install gator-project-metrics providers/monitoring/chart \
-  --kube-context "$GATOR_CONTEXT" -n monitoring -f project-metrics.yaml --wait
-oc --context "$GATOR_CONTEXT" -n monitoring rollout status deployment/gator-project-metrics
-oc --context "$GATOR_CONTEXT" get metricstenants -A
-```
+Для VMAuth задайте `userNamespaceSelector: {}` и `userSelector.matchLabels`
+с тем же `monitoring.gatorstack.dev/reader: projects`. Оставьте управление этими
+CR только платформе. Профиль установки `providers/monitoring/chart` принимает
+`projects` с namespace/UID/accountID, `clouds` с region/projectID и `rgw` с
+заранее проверенными tenant/Account ID, а также endpoints в `config`. Эти
+значения поступают от provisioning, а не от пользователя проекта.
 
 ### Подключение продукта к консоли
 
-Добавьте в существующие values Dashboard:
+Каталог monitoring использует native VMUser как read-only binding. Роли
+`monitoring.auditor/viewer/editor/owner` разрешают GET `VMUser/project` и Project;
+права на Secret, конфигурацию VMAuth/сборщика и Grafana не выдаются.
+
+Dashboard читает VMAuth через общий `http-json` data-list. В служебном Secret
+`gator-data-vmauth` поле `credentials.json` содержит `targets`: ключ
+`namespaceUID/resourceUID`, значение с `projectUID`, `username`, `password`.
+Заполняйте его из Secret, созданного оператором, проверяя owner UID. Не
+передавайте пароль в values, ProductPage или браузер. При пересоздании namespace,
+Project или VMUser обновите привязку: до этого чтение закрыто.
 
 ```yaml
 dataLists:
   adapters:
     - name: project-metrics
-      url: http://gator-project-metrics.monitoring.svc:8080
-      existingSecret: gator-data-project-metrics
+      protocol: http-json
+      url: http://vmauth-projects.monitoring.svc:8427
+      existingSecret: gator-data-vmauth
+      operations:
+        metric-series:
+          path: /api/v1/query
+          query:
+            query: 'last_over_time({__name__!=""}[5m])'
+            limit: '10001'
+          itemsPath: /data/result
+          successPath: /status
+          successValue: success
+          rejectWhen: {/isPartial: true}
+          fields:
+            name: {path: /metric/__name__}
+            labels: {path: /metric, format: key-value}
 ```
 
-Обновите Dashboard обычной процедурой установки, сохранив остальные values.
-Установите пакет каталога в тот же namespace:
+Backend сначала проверяет caller GET Project, каталог, discovery и VMUser,
+затем выбирает credential по трём живым UID. Browser не задаёт tenant, запрос,
+URL или headers. Список показывает имя и все labels; разные наборы labels
+остаются отдельными строками. Ошибки очищают список и не раскрывают ответ
+источника. Подробности — в [справочнике data-list](../reference/data-list.md).
 
-```sh
-helm dependency build --skip-refresh products/monitoring/chart
-helm upgrade --install gator-product-monitoring products/monitoring/chart \
-  --kube-context "$GATOR_CONTEXT" -n gator-dashboard --wait
-```
+Если каталог управляется umbrella release, обновляйте зависимость в нём.
+Отдельный release поверх принадлежащих umbrella объектов устанавливать нельзя.
+Для новых проектов и изменений cloud/S3 connections повторяйте provisioning,
+обновление relabel mapping и служебного credentials Secret. До создания VMUser
+продукт не получает доступ к метрикам.
 
-Если каталог управляется umbrella release, добавьте зависимость туда. Не
-устанавливайте отдельный release поверх уже принадлежащих umbrella объектов.
-Пользователям назначьте `monitoring.viewer` через RoleBinding нужного проекта;
-общие стандартные роли включают эти права посредством Kubernetes aggregation.
-Роль позволяет только GET конкретного MetricsTenant и Project. Права на запись
-и административную Grafana этим не выдаются.
+### Сеть и эксплуатация
 
-Dashboard проверяет caller GET Project и binding. Затем служебный адаптер
-повторно читает живые Namespace/Project/MetricsTenant, сверяет UID и registry
-и выполняет фиксированный запрос рядов только из закреплённого numeric tenant.
-Список содержит имя и весь набор лейблов; одинаковые имена с разными наборами
-показываются отдельными строками. Browser не выбирает
-accountID, PromQL или endpoint. Произвольные query/labels/metadata/export API
-проектам не открываются. Контракт списка описан в [справочнике](../reference/data-list.md).
+NetworkPolicy закрывает vmselect, vminsert, vmstorage, VMAgent, VMAuth и общий
+bucket stats exporter от пользовательских pods. VMAuth доступен доверенному
+Dashboard; vmselect — VMAuth, Grafana и платформенному billing collector.
+Проектные egress policies и постоянный IPv4/IPv6 firewall на хостах закрывают
+общие exporter-порты также от ВМ OpenStack. Пользователь не должен иметь права
+добавлять обходные NetworkPolicy или менять provider status/scrapes/registry.
 
-### Проверка и эксплуатация
+Проверьте два проекта с разными ВМ/бакетами: own API должен работать, чужой
+проект — отвечать 403. Через VMAuth проверьте подмену AccountID/ProjectID,
+произвольный `/select/...` и write API. Из временных проектных pods проверьте
+отказ на прямые backend/exporter endpoints и сохранение обычного S3 доступа.
 
-В продукте **Мониторинг → Метрики** проверьте два проекта с разными ресурсами:
-списки должны отражать только их ВМ и бакеты. Попытка запросить страницу чужого
-проекта должна давать 403. Проверьте из временных pods каждого проекта, что
-порты VictoriaMetrics, общего bucket exporter и внешних exporter IP недоступны,
-а обычное подключение к Kubernetes/S3 работает. Проверьте отсутствие прав
-менять binding, registry, Secret, provider status и создавать unmanaged scrapes.
-
-При отсутствии метрик смотрите targets VMAgent `projects`, readiness и logs
-`gator-project-metrics`, свежесть credentials и соответствие Account bootstrap
-namespace UID. UP пустого libvirt scrape допустим: на compute может не быть
-подтверждённых ВМ проекта. Для бакетов действует задержка RGW accounting;
-traffic counters появляются после операций с объектами и сбрасываются при
-restart/eviction. Ошибка источника показывается как ошибка, а не нулевое потребление.
-
-Проектная история начинается при включении этой маршрутизации. Старая история
-tenant 0 автоматически не копируется. Lifecycle PaaS StaticScrape и графики
-внутри продукта добавляются отдельно.
+Если ряды отсутствуют, проверьте targets VMAgent/projects, generated VMAuth
+configuration и VMUser Secret ownership, затем доверенный mapping. Для S3
+учитывайте задержку bucket accounting и interval exporter. Traffic counters
+появляются после операций и сбрасываются при cache eviction/restart; отсутствие
+серии не означает нулевой трафик. Новая схема сохраняет существующие numeric
+tenant IDs и их историю; старая история tenant 0 автоматически не копируется.
+Графики в продукте и автоматические PaaS StaticScrape добавляются отдельно.
