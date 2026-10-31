@@ -209,3 +209,50 @@ reporting:
 credentials и произвольные spec поля сюда не относятся. Отсутствующее поле
 означает пустые теги; некорректные теги помечаются отдельно и не меняют цену.
 Прошлые минуты не обогащаются текущими тегами задним числом.
+
+## Публикация ценообразования в Dashboard
+
+Установите актуальные CRD и controller Gator Cost с поддержкой `PriceList`,
+а также продукт Billing. Контроллер публикует витрину каждые 15 секунд только
+для явно настроенных субъектов и семейств. Цены берутся из принятых тарифных
+снимков ledger; записи ниже задают публичные подписи и Product ID.
+
+Сохраните как `pricing.yaml` и примените к уже настроенному CostConfiguration:
+
+```yaml
+spec:
+  pricing:
+    projects:
+      - namespace: project-a
+        projectID: project-a
+    families:
+      - key: standard
+        title: Базовый прайс-лист
+        rates:
+          - key: cpu
+            product: iaas
+            title: CPU
+            unitTitle: vCPU·мин
+          - key: ram
+            product: iaas
+            title: RAM
+            unitTitle: ГиБ·мин
+```
+
+```sh
+kubectl patch costconfiguration default --type merge --patch-file pricing.yaml
+kubectl -n project-a get pricelists
+```
+
+`projectID` должен совпадать с измерением проекта в MeteringPolicy и
+ProjectTariffPlan. `key` семейства — с TariffPlan.key / globalPlanRef.name.
+`rates[].key` — с ключом ставки; `product` — ID установленного Product.
+`unitTitle` описывает именно единицу принятой ставки, включая минуту; это
+подпись, она не выполняет преобразование цены. Неописанные ставки сохраняются
+с исходными ключом и единицей, в группе без продукта.
+
+Billing auditor/viewer/editor/owner получают get/list/watch PriceList только в
+namespace назначения роли. Права записи и `pricelists/status` им не выдаются.
+Удаление namespace из экспорта убирает производную витрину этого проекта;
+принятые тарифы и история начислений остаются. Состояние синхронизации проверяйте
+по PriceList и журналу collector, не меняя его `status` вручную.
