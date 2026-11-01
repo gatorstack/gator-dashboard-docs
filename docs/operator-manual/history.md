@@ -181,6 +181,10 @@ spec:
 `capture.result` применяется к изменяемым namespaced GVK каталога. Дополнительные
 GVK задаются `capture.resources`: apiVersion/kind/plural/product/resource, fields
 и отдельный result. Дополнительный объект без result завершается по ответу API.
+Для отличающегося lifecycle существующего каталога задайте такую же GVK и точные
+product/resource выбранного контракта в resources: эта полная привязка заменяет
+каталожное правило, включая fields/result. Например, отчёту с единственным
+Ready не нужно назначать общие условия Ready/Synced инфраструктурных CR.
 В capture.readRules выдайте только get нужных GVK, без Secret. Catalog aliases
 одной сущности дают одну запись, ограничения значений объединяются консервативно;
 неоднозначные selectors/result требуют исправления конфигурации.
