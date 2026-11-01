@@ -10,7 +10,7 @@ title: Установка Audit Trails
 
 ## Предварительные условия
 
-Нужны Crossplane v2, cert-manager, Strimzi, [проектное логирование](logging.md),
+Нужны Dashboard 0.25.2 или новее, Crossplane v2, cert-manager, Strimzi, [проектное логирование](logging.md),
 история консоли и S3 integration с `S3Bucket`/`S3User`. Для всех источников важны
 синхронизация часов и сохранность UID проекта/namespace. Интеграция подключается
 отдельными Helm releases; страницы добавляются к существующему продукту мониторинга.
