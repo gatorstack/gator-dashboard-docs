@@ -3,7 +3,7 @@ title: Клиентское логирование
 ---
 
 Gator использует стандартные VictoriaLogs, VMAuth и Vector. Generic gateway
-Dashboard проверяет Kubernetes RBAC и связывает записи с основным GVK заказа.
+Dashboard проверяет проектную роль логирования; GVK описывает источники и виды.
 Отдельного продуктового HTTP-сервиса или lifecycle controller для логирования нет.
 Первый продуктовый источник — request access/error RGW. Retention — 30 дней.
 
@@ -136,28 +136,60 @@ tenant routing задаются штатными ресурсами/конфиг
 совместимого collector в продуктовой поставке. GVK binding связывает существующие
 данные с заказом и не создаёт отсутствующий источник автоматически.
 
-В каждом проекте администратор создаёт LogAccess с именем из `accessRef`, UID
-namespace/Project, sourceRef, backendRef и tenant IDs. Продуктовая viewer/auditor
-роль получает только `get` `logaccesses` с `resourceNames` этого grant. Не выдавайте
-проектным ролям запись LogAccess или конфигурации каталога. Одновременно требуется
-`get` основного CR: grant сам по себе не разрешает читать все ресурсы tenant.
+В каждом проекте администратор создаёт LogAccess с именем из accessRef, UID
+namespace/Project, sourceRef, backendRef и tenant IDs. Не выдавайте запись
+LogAccess клиентским ролям. Для чтения назначается отдельная logging.viewer,
+а не продуктовая роль. Права на заказы не являются границей проектных логов.
+
+## IAM-роли
+
+| Роль | Возможности |
+| --- | --- |
+| logging.viewer | Все клиентские логи выбранного проекта, query/hits/выгрузка |
+| logging.owner | Тот же просмотр, управление RoleBinding проекта, bind только logging.viewer/logging.owner |
+
+Роли создаются chart Dashboard при настройке logging.backends и включённом
+rbac.roleCatalog.enabled. Они видны в IAM в группе «Логирование». Общие
+viewer/editor/owner агрегируют logging.viewer. Продуктовые S3 роли и auditor
+самостоятельного доступа к логам не дают. logging.owner не меняет LogAccess,
+LogSource, ClusterRole или backend credentials. Управление RoleBinding подчиняется
+штатной проверке эскалации Kubernetes.
+
+```yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: project-log-readers
+  namespace: team-a
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: logging.viewer
+subjects:
+- kind: Group
+  name: team-a-log-readers
+  apiGroup: rbac.authorization.k8s.io
+```
+
+Gateway проверяет native SelfSubjectAccessReview: get logaccesses без name в
+namespace проекта. Старые resourceNames: [s3] grants недостаточны. После миграции
+назначьте logging.viewer выбранным получателям. Для отзыва удалите соответствующие
+RoleBinding, включая общие viewer/editor/owner, если они дают тот же доступ.
 
 ## Защита и эксплуатация
 
-Gateway заново читает GVK с токеном caller, проверяет UID/selector/проект, применяет
-native `extra_filters` по source и всем identity полям, ограничивает период датой
-создания заказа и проецирует ответ на allowlist. Фильтры действуют в подзапросах
-LogsQL. Права и identity повторно проверяются перед выдачей результата.
+Gateway проверяет Project/namespace/LogAccess, immutable UID/tenant pins и роль
+до и после query/hits. Native extra_filters ограничивают source, представление
+и время создания Project/namespace. Проектный explorer включает все клиентские
+записи своего tenant, включая удалённые заказы и бакеты вне каталога. Заказ и его
+GET/LIST/UID не являются границей авторизации. В карточке остаётся удобный фильтр
+по текущему ресурсу, требующий доступа к его metadata. Подзапросы LogsQL не снимают
+серверные фильтры; ответы проецируются на безопасный allowlist.
 
-S3 file ops log содержит qualified `tenant/bucket`; он не содержит внутренний
-`bucket_id`/owner из другого native RGW формата. Binding использует
-`status.atProvider.bucket` и `tenant`, а UID заказа и обязательная временная
-граница исключают наследование истории новым заказом под тем же именем.
-Tenant маршрутизации определяется по бакету, а не вызывающему пользователю. Error — request записи с
-HTTP 4xx/5xx. Vector до отправки удаляет URI/query strings, referrer, headers,
-principal credentials и общие daemon/debug сообщения. Записи без известного
-проектного tenant/бакета не направляются клиентам. Даже бакет того же Ceph account,
-созданный вне заказа, нельзя выбрать через gateway.
+S3 file ops log содержит qualified tenant/bucket. Маршрутизация определяется по
+проектному tenant бакета, а не вызывающему пользователю. Vector удаляет URI/query
+strings, referrer, headers, credentials и общие daemon/debug сообщения. Записи без
+известного project tenant/бакета не направляются клиентам.
 
 Следите за диском VictoriaLogs, заполнением очередей Vector, HTTP errors,
 счётчиками discarded events и задержкой доставки. Очередь ограничена; её потеря
@@ -212,10 +244,10 @@ logrotate ограничивает его локальную историю. Vec
 ProductPage с `schema.inline.x-dashboard-view: logging` подключает общий экран;
 встроенный каталог мониторинга поставляет страницу `monitoring-logs`. Ни имя
 продукта, ни GVK не зашиты в renderer. Explorer строит список источников из
-ProductResource.logging, проверяет LogSource/LogAccess и выполняет discovery/list
-основных CR с caller token. Каждый кандидат дополнительно проверяется через GET.
-Стандартной роли продукта нужны list/get основного GVK и get его LogAccess.
-Права мониторинга сами по себе не открывают все продуктовые источники.
+ProductResource.logging и проверяет LogSource/LogAccess. Заказы не перечисляются;
+источники видны независимо от текущих CR и продуктовых GET/LIST разрешений.
+Наличие logging.viewer открывает все настроенные клиентские источники проекта.
+Права только на мониторинг его не заменяют.
 
 Дополнительные поля binding:
 
@@ -247,9 +279,7 @@ spec:
 Native VMAuth reader должен разрешать только `/select/logsql/(query|hits)`.
 Перечисление tenants, административные endpoints и произвольные пути закрыты.
 Обе операции получают один и тот же проверенный tenant и native extra_filters.
-Для нескольких заказов строятся полные ветки `(identity AND время создания) OR ...`;
-отдельные списки значений разных identity полей не используются. Такой scope
-применяется и к вложенным query/union/join. Гистограмма запрашивается через hits
-с ignore_pipes=1 и ограниченным шагом, а не вычисляется по урезанной выдаче.
-Лимит области — 128 заказов на binding; превышение закрывает запрос, не расширяет
-его до всего tenant. Список каталога ограничен 256 ProductResource.
+Source/view/time predicates применяются и к вложенным query/union/join.
+Гистограмма запрашивается через hits с ignore_pipes=1 и ограниченным шагом,
+а не вычисляется по урезанной выдаче. Каталог ограничен 256 ProductResource;
+число заказов больше не ограничивает запросы.

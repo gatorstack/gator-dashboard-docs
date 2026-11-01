@@ -72,3 +72,15 @@ User/Group/ClusterRole: для этого нужны отдельные клас
 get/create/update Secrets в этом namespace. Настройка iam.passwordRole.enabled;
 делегирование — отдельным RoleBinding в credentials namespace, как описано
 в [руководстве оператора](../operator-manual/rbac.md#делегировать-локальные-пароли).
+
+## Роли логирования
+
+| ClusterRole | Права в namespace назначения |
+| --- | --- |
+| logging.viewer | Get Project/project, get/list LogAccess; все клиентские логи проекта |
+| logging.owner | Тот же просмотр, get/list/watch Role/RoleBinding, управление RoleBinding и bind только logging.viewer/logging.owner |
+
+Группа IAM «Логирование». Общие viewer/editor/owner агрегируют logging.viewer.
+Auditor и S3-роли сами по себе логи не открывают. Основные GVK/заказы не делят
+доступ: чтение всех клиентских логов проекта либо HTTP 403. LogAccess write,
+секреты, служебные логи и backend admin API ни одна из этих ролей не предоставляет.
