@@ -157,7 +157,7 @@ Inline/configMapRef/resourceSchemaRef — взаимоисключающие и�
 | `spec.lookups.*.conditions` | Доступность варианта: path/values/message, conditionType для именованного condition |
 | `preconditions[].operator: Empty` | Проверка отсутствующей/null/пустой коллекции без values; скаляры и непустые массивы/объекты не проходят |
 | `spec.outputs` | Именованные пути либо Secret outputs основного CR |
-| `spec.outputs[].secretRef` | namePath в основном CR и allowlist fields (id/key/title); Secret того же namespace с owner UID основного CR |
+| `spec.outputs[].secretRef` | namePath в основном CR и allowlist fields (id/key/title); Secret того же namespace с owner UID основного CR. Optional ownerRef (resourceRef, namePath, uidPath) проверяет прямого дочернего владельца через controller UID |
 | `spec.execution.mode` | Direct; Gated блокируется до подключения runtime |
 
 Для namespaced target выбирается `namespacePolicy: CurrentProject` либо
