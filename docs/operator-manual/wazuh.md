@@ -92,6 +92,42 @@ Wazuh не получает автоматически данные из OpenObs
 [логирования Gator](logging.md). Выбирайте источники и правила отправки отдельно.
 Административная SIEM не предоставляет проектную изоляцию Gator.
 
+## Приём CEF от Audit Trails
+
+Включите внутренний TCP syslog listener и ограничьте допустимые IP источников:
+
+```yaml
+manager:
+  syslog:
+    enabled: true
+    port: 5514
+    allowedIPs: [10.42.0.0/16]
+    gatorAudit: true
+    allowedPeers:
+    - namespaceSelector:
+        matchLabels: {kubernetes.io/metadata.name: logging}
+      podSelector:
+        matchLabels: {app: gator-audit}
+```
+
+Замените Pod CIDR на свою сеть и примените values через установочный скрипт.
+`gatorAudit` добавляет CEF decoder и правила 110100/110101 для Gator Audit.
+NetworkPolicy дополнительно допускает syslog только от перечисленных peers;
+Pod другого проекта не может подделать событие Gator через этот приёмник.
+Для другого источника настройте отдельный peer/ipBlock. API manager доступен
+Dashboard своего namespace, агентские порты сохраняют свой протокол авторизации.
+Service manager публикует 5514 только внутри кластера; веб-ingress остаётся
+адресом консоли. В AuditTrail выберите SIEM, хост
+`wazuh-manager.wazuh.svc`, порт 5514, TCP и RFC3164. Для удалённого приёмника
+организуйте отдельный защищённый сетевой маршрут; TLS-коннектору нужен приёмник
+с поддержкой TLS.
+
+Создайте ресурс в подключённом проекте и найдите событие в `wazuh-alerts-*` по
+группе `gator_audit` и `data.audit.event_id`. Поля `audit.source`, `audit.event_type`,
+`audit.project_uid`, `audit.actor`, `audit.outcome` позволяют проверить разбор.
+Успешные события получают правило110100 уровня3, отказы —110101 уровня7.
+Включение приёмника не заменяет проектные трейлы и выбор источников.
+
 ## Проверка и эксплуатация
 
 ```sh

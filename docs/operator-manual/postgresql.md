@@ -170,7 +170,8 @@ Crossplane `AnsibleRun` выполняет закреплённую MIT-колл
 inventory и SSH private key передаются через Secret refs; `AnsibleRun.spec` не
 содержит секретных значений. `ansible_no_log` включён. Операции и пользовательские
 сущности имеют отдельные CR и run identities. Защита удаления и finalizers
-удерживают заказ до очистки собственных ресурсов. Helm uninstall не является
+удерживают заказ до очистки собственных ресурсов. XRD, Composition и provider/function packages помечены Helm policy `keep`, чтобы
+удаление release не удаляло API с работающими заказами. Helm uninstall не является
 способом удаления работающих заказов: сначала завершите их lifecycle.
 
 Пакет provider-ansible v0.8.0 использует `upbound-system` для shard lease.
@@ -223,7 +224,7 @@ VM или дисков. Используйте включённый в комп�
 3. Выполните `observe`, дождитесь наблюдения всех исходных target UID, запустите
    `verify`. На этом этапе мосты не имеют прав Create/Update/Delete.
 4. Выполните `activate`, затем повторный `verify`. Для импортированных ресурсов
-   разрешаются Observe/Update/Delete; Create остаётся исключённым. Имена, UID
+   включается управление без Create; неизменяемые AnsibleRun также не получают Update. Имена, UID
    и spec старых AnsibleRun сохраняются, bootstrap повторно не выполняется.
 
 При несовпадении UID, спецификации или fingerprint остановите переход и сохраните
@@ -233,3 +234,18 @@ Protected pin ConfigMap нужен на всём протяжении жизни
 Доступ к нему и private Runtime/Object API предназначен администраторам и
 Crossplane. Connection Secret/Role, LogAccess, Quota и назначение тарифа сохраняют
 свою identity; служебные credentials остаются в защищённом namespace.
+
+
+Повтор bootstrap сначала проверяет принадлежность существующей БД заказу по
+scope/имени Patroni, пути данных и сохранённому superuser credential. Для
+совпавшей работающей БД начальное развёртывание пропускается, интеграции
+согласуются повторно. Чужой или частично настроенный data directory не
+переинициализируется. Новые заказы включают версию trusted playbook в hash
+запуска; импортированный заказ сохраняет старые hash/name/spec.
+
+
+Удаление заказа через продукт использует Foreground propagation. Служебные
+identity Kubernetes garbage collector включены в admission boundary, чтобы
+системная очистка могла удалить composed Objects и их foreground finalizers.
+Credential custodian проверяет отсутствие native потребителей по закреплённому
+UID даже если XR уже отсутствует; Secret удаляются последними.
