@@ -37,3 +37,12 @@ replicas и pinned subnets; `PostgreSQLClass.spec` — title и resources.
 раздельные условия single-node/Patroni и множители 1/3. Цены и назначения
 задаются TariffPlan/ProjectSubscription; underlying VM не учитываются как
 отдельный Compute-заказ проекта.
+
+
+Начиная с 0.2 `PostgreSQLCluster` — namespaced XR Crossplane с enforced Composition
+`gator-postgresql`. `spec.crossplane` содержит служебные binding/resource references
+и не является пользовательской настройкой PostgreSQL. `PostgreSQLRuntime` —
+обычный private composed CR с UID-bound `clusterRef`, plan/artifact refs и health
+conditions; продуктовые роли не предоставляют к нему доступ. Namespaced Object
+мосты и Usage описывают инфраструктуру и порядок её удаления. Служебные пароли,
+SSH private keys и cloud credentials не входят в их manifests/status.

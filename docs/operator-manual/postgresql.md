@@ -8,7 +8,7 @@ Gator Products. Он устанавливает категорию DBaaS, про
 ## Предварительные условия
 
 - Dashboard с ProductResource, connection-secret, monitoring и logging GVK.
-- Crossplane и namespaced provider-openstack; в каждом проекте настроен
+- Crossplane 2.x, stock provider-kubernetes 1.4.1 (namespaced Object) и namespaced provider-openstack; в каждом проекте настроен
   `ProviderConfig` с именем региона и проектным application credential Secret.
 - VPC подсети имеют Ready, external ID и аннотацию
   `vpc.gatorstack.dev/zone`; несколько регионов имеют независимые настройки.
@@ -99,7 +99,19 @@ helm upgrade --install gator-postgresql products/postgresql/chart \
   -f postgresql-values.yaml --wait --timeout 10m
 ```
 
-При обновлении CRD примените текущие CRD комплекта перед Helm upgrade: Helm не
+Chart устанавливает стандартные go-templating/auto-ready functions и
+provider-kubernetes. Если Kubernetes provider ещё не установлен, первый Helm
+install выполните с `--set composition.createProviderConfig=false`, дождитесь
+Established `clusterproviderconfigs.kubernetes.m.crossplane.io`, затем повторите
+Helm upgrade со значением `composition.createProviderConfig=true`. Это позволяет
+штатному package manager установить provider API до его использования.
+
+Для уже установленного совместимого provider-kubernetes задайте
+`composition.installKubernetes: false` и его runtime service account в
+`composition.kubernetesServiceAccount`; chart выдаст этому аккаунту только права
+моста PostgreSQL. Второй конкурирующий provider не устанавливайте.
+
+При обновлении обычных CRD примените текущие CRD комплекта перед Helm upgrade: Helm не
 обновляет содержимое `crds/` существующего release автоматически.
 
 В примере служебный namespace и registry Secret подготовлены заранее, поэтому
@@ -138,8 +150,19 @@ Ansible provider должен быть Healthy, контроллер и log inge
 
 ## Ответственность компонентов
 
-`PostgreSQLCluster` — основной заказ. Контроллер создаёт native OpenStack MR
-в protected namespace, используя исходный tenant проекта. Image/flavor profile
+`PostgreSQLCluster` — основной namespaced Crossplane XR. Chart содержит XRD и
+Composition со стандартными `function-go-templating` и `function-auto-ready`.
+Composition создаёт OpenStack MR, ProviderConfig, AnsibleRun и monitoring CR через
+stock namespaced provider-kubernetes `Object`. Мост сохраняет native CR в protected
+namespace и позволяет работать с cluster-scoped Ansible API. Между namespace не
+создаются ownerReferences. `Usage` удерживает providers, порты, security groups и
+закрытые credentials, пока не удалены их потребители.
+
+Обычный composed `PostgreSQLRuntime` обслуживается адаптером только для подготовки
+credentials, доверенного SSH inventory/playbooks и проверки SQL/exporter. Его
+RBAC не разрешает запись инфраструктуры или AnsibleRun. Запросы SQL-сущностей
+передаются родительской Composition через безопасные refs/hash в status.
+Используется исходный tenant проекта. Image/flavor profile
 закрепляется в Secret при создании: изменение values относится к новым заказам
 и не заменяет диски существующих кластеров.
 
@@ -180,3 +203,33 @@ credentials и SSH. Доступ к конкретному connection Secret з�
 использования отдельно обеспечьте нужное хранение и проверку восстановления.
 Логические зоны учебного OpenStack сами по себе не гарантируют физическую
 независимость отказов.
+
+
+## Перенос существующего кластера
+
+Переход с версии 0.1 выполняется над тем же заказом и GVK, без удаления CRD,
+VM или дисков. Используйте включённый в комплект инструмент
+`providers/postgresql/scripts/migrate-to-composition.py` с явными namespace,
+именем, UID и защищённым файлом snapshot. Он не сохраняет Secret values или
+содержимое БД; содержит только identity, спецификации и контрольные суммы.
+
+1. Выполните `snapshot`, при необходимости с `--seed-check`: инструмент снимет
+   UID/native spec, ID и creation time VM/дисков, fingerprints БД и ролей,
+   PostgreSQL system identifier и времена запуска postmaster. Seed добавляет
+   отдельную проверочную таблицу из 100 строк.
+2. Выполните `prepare`, затем остановите старый инфраструктурный writer.
+   Заказ остаётся paused. Установите текущие CRD, XRD/Composition и новый
+   artifact adapter обычным Helm upgrade.
+3. Выполните `observe`, дождитесь наблюдения всех исходных target UID, запустите
+   `verify`. На этом этапе мосты не имеют прав Create/Update/Delete.
+4. Выполните `activate`, затем повторный `verify`. Для импортированных ресурсов
+   разрешаются Observe/Update/Delete; Create остаётся исключённым. Имена, UID
+   и spec старых AnsibleRun сохраняются, bootstrap повторно не выполняется.
+
+При несовпадении UID, спецификации или fingerprint остановите переход и сохраните
+XR paused. Не удаляйте XR, XRD, native MR, pin ConfigMap или snapshot для retry.
+Отсутствующий импортированный CR считается ошибкой и автоматически не создаётся.
+Protected pin ConfigMap нужен на всём протяжении жизни импортированного заказа.
+Доступ к нему и private Runtime/Object API предназначен администраторам и
+Crossplane. Connection Secret/Role, LogAccess, Quota и назначение тарифа сохраняют
+свою identity; служебные credentials остаются в защищённом namespace.
