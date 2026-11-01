@@ -22,6 +22,7 @@ Gator Dashboard — веб-консоль для доступа к сервис�
 | Выдать доступ к проекту | [Управление доступом](operator-manual/rbac.md) |
 | Изучить биллинг на уровне GVK и OpenMeter | [Биллинг: архитектура, API и примеры](billing/index.md) |
 | Установить учёт потребления и тарифы | [Установка биллинга](operator-manual/billing-installation.md) |
+| Развернуть SIEM для событий безопасности | [Wazuh SIEM](operator-manual/wazuh.md) |
 | Найти поля сущности или параметр настройки | [Справочник сущностей](reference/entities.md) |
 
 ## Что входит в решение
