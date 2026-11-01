@@ -314,3 +314,85 @@ conditionType. При несовпадении observedGeneration с metadata.ge
 Технический ID строки выводится одной строкой в формате `metadata.name.metric`,
 например `compute.vcpu`. Полный ID поддерживается поиском; длинные ID сокращаются
 в колонке, полное значение доступно в подсказке.
+
+## Уведомления в шапке продукта
+
+Чтобы сообщить об особенностях сервиса, добавьте `spec.notifications` в Product.
+Массив Product виден на всех страницах этого сервиса, включая обзор. Такой же
+массив в ProductPage виден только на этой странице. Сначала выводятся сообщения
+продукта, затем страницы; порядок внутри каждого массива сохраняется.
+Уведомления занимают всю ширину шапки между заголовком и кнопками действий.
+
+Пример `product-values.yaml` для отдельного продуктового chart:
+
+```yaml
+catalog:
+  products:
+    - name: platform-info
+      spec:
+        name: Информация о платформе
+        category: platform
+        notifications:
+          - title: Проверьте выбранный проект
+            description: Все действия выполняются в проекте, выбранном в меню.
+            icon: info
+            color: blue
+            action:
+              label: Открыть помощь
+              pageRef:
+                name: platform-help
+        menu:
+          - name: platform-help
+            title: Помощь
+  pages:
+    - name: platform-help
+      spec:
+        title: Помощь
+        productRef:
+          name: platform-info
+        notifications:
+          - title: Перед обращением в поддержку
+            description: Подготовьте название проекта и время возникновения ошибки.
+            icon: triangle-alert
+            color: amber
+            action:
+              label: Руководство
+              href: https://gatorstack.github.io/gator-dashboard-docs/getting-started
+        schema:
+          inline:
+            type: object
+            x-dashboard-view: message
+            description: Здесь можно разместить правила работы с платформой.
+```
+
+При изменении существующих values сохраняйте остальные элементы `catalog.products`
+и `catalog.pages`: Helm заменяет массив целиком. Установите chart по
+[инструкции поставки продуктов](product-packages.md). Перед первым использованием
+обновите CRD Product и ProductPage из комплекта Dashboard по
+[порядку обновления](upgrading.md); Helm upgrade не обновляет CRD автоматически.
+
+`title` обязателен. `description`, `icon`, `variant`, `color` и `action`
+необязательны. `color` выбирает заливку, границу и текст: blue, green, amber, red,
+purple или gray. Цвет учитывает текущую тему и имеет приоритет над `variant`.
+Без цвета доступен обычный `default` или `destructive`. Текст показывается
+буквально; HTML и скрипты не исполняются. Переносы строк описания сохраняются.
+
+Action — ссылка с подписью `label`. Укажите ровно одно из `pageRef.name` и `href`.
+`pageRef` открывает указанную страницу того же продукта в текущем проекте;
+целевой странице не должны требоваться имя или UID конкретного ресурса.
+`href` принимает HTTPS-адрес либо абсолютный путь приложения, например
+`/settings/profile`. HTTPS открывается в новой вкладке без передачи Referer.
+Ссылка не выполняет изменение ресурса и не добавляет прав доступа.
+На телефоне кнопка переносится под текст.
+
+Чтобы убрать сообщения, задайте `notifications: []`. До 16 элементов допускается
+на каждом уровне. Массив страницы дополняет общий и не может скрыть сообщения
+Product. Для Action, открытого диалогом поверх карточки, используются сообщения
+Action-страницы и продукта. Уведомления исходной Detail-страницы не добавляются.
+Это статические объявления каталога; отдельная история событий не создаётся.
+
+Встроенные примеры IAM настраиваются через `iam.notifications` и
+`iam.pageNotifications.users/groups/roles/bindings`, мониторинга — через
+`monitoring.notifications` и `monitoring.pageNotifications.dashboards/exports/metrics/logs`.
+Каждый ключ страницы содержит такой же массив. Пустой список отключает его.
+Остальные продукты хранят примеры в собственных пакетах каталога.

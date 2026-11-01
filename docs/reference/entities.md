@@ -29,6 +29,7 @@
 | `spec.category` | Категория каталога |
 | `spec.description` | Описание и текст для поиска |
 | `spec.logo` | HTTPS URL или путь к логотипу от корня сайта |
+| `spec.notifications[]` | Общие сообщения в шапке всех страниц продукта; до 16 элементов |
 | `spec.badges[]` | Метки с title/color, до восьми |
 | `spec.menu[]` | Порядок страниц, поля name/title/description и необязательный icon |
 | `spec.menu[].icon` | Иконка пункта страницы: путь от корня сайта, HTTPS URL или base64 data URI PNG/JPEG/WebP/SVG; до 16384 символов |
@@ -83,6 +84,7 @@ spec:
 | `metadata.name` | Идентификатор страницы и часть URL |
 | `spec.productRef.name` | Имя Product |
 | `spec.title` | Название пункта меню |
+| `spec.notifications[]` | Дополнительные сообщения только текущей страницы; до 16 элементов |
 | `spec.group` | Необязательная группа меню |
 | `spec.schema.inline` | JSON Schema в объекте или JSON-строке |
 | `spec.schema.configMapRef` | Имя ConfigMap и ключ схемы |
@@ -412,3 +414,25 @@ MetricOwnershipPolicy, MonitoringDashboard и MetricExport группы
 проекцию, LogAccess закрепляет проектные UID и tenant и служит отдельным native
 RBAC разрешением чтения. Привязка к основному GVK задаётся в ProductResource.logging.
 [Справочник](logging.md), [установка и новый продукт](../operator-manual/logging.md).
+
+
+## Поля уведомления Product / ProductPage
+
+Оба уровня используют `spec.notifications[]`. Общий массив предшествует массиву
+страницы, без замены или объединения по имени.
+
+| Поле элемента | Ограничения |
+| --- | --- |
+| `title` | Обязательный непустой текст, до 512 символов |
+| `description` | Текст с переносами строк, до 8192 символов |
+| `icon` | info, circle-check, triangle-alert, circle-alert, bell; без значения иконки нет |
+| `variant` | default или destructive; по умолчанию default |
+| `color` | blue, green, amber, red, purple, gray; заливка/граница/текст, приоритет над variant |
+| `action.label` | Обязательная подпись при наличии action, до 128 символов |
+| `action.href` | HTTPS URL либо абсолютный путь приложения, до 2048 символов; исключает pageRef |
+| `action.pageRef.name` | Имя страницы того же продукта; исключает href |
+
+В action нужен ровно один адрес. Protocol-relative URL, обратные слеши и другие
+схемы запрещены. Произвольные CSS-классы, HTML и исполняемые callbacks не входят
+в контракт. Конфигурация читается с правами пользователя вместе с каталогом.
+Пример установки — [уведомления в каталоге](../operator-manual/catalog.md#уведомления-в-шапке-продукта).
