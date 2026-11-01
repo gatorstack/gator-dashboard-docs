@@ -16,7 +16,7 @@ LogSource. Общая Crossplane Composition автоматически подк
    Его Kafka ACL разрешает запись, но не чтение клиентской истории.
 3. Реплики Vector читают partitions одной consumer group. Они повторно проецируют
    безопасные поля и проверяют identity по защищённым Kubernetes ресурсам.
-4. Фиксированный маршрут проекта передаёт запись через VMAuth в его tenant
+4. Фиксированный числовой маршрут передаёт запись через VMAuth в его tenant
    VictoriaLogs. AccountID/ProjectID из тела записи не управляют маршрутом.
 5. Dashboard выполняет LogsQL query/hits через закрытый reader endpoint VMAuth.
    Роль logging.viewer открывает все клиентские логи выбранного проекта.
@@ -70,7 +70,6 @@ kafka:
   topicRetentionBytes: 134217728
   consumersEnabled: true
   consumerReplicas: 2
-  consumerStorage: 5Gi
   vectorImage: timberio/vector:0.52.0-debian
 ```
 
@@ -117,7 +116,11 @@ LogSource с `autoAccess: true` для своего backend. Сначала он
 удаление последнего бакета не закрывает историю проекта.
 
 Пересоздание Project или namespace получает новый ID. Старые ID и привязки
-identity остаются tombstones и не переиспользуются. Перед включением маршрута
+identity остаются tombstones и не переиспользуются. Consumers используют внутренний
+путь `/ingest/tenants/<accountID>/0/insert/jsonline`, а VMAuth назначает fixed
+AccountID/ProjectID. Исторический writer route сохраняет исходный tenant; запоздавший
+consumer после recreation не направит старые данные в новый проект с тем же именем.
+Reader маршруты выдаются только текущим проектам. Перед включением маршрута
 Composition сохраняет UID владельца и значение внешней identity. Перенос этой
 identity в другой проект блокируется; старые сообщения не становятся его логами.
 Неоднозначные ownership данные требуют исправления администратором.
@@ -282,11 +285,13 @@ storage/collector и восстановление доставки после н
 ### Масштабирование и доставка
 
 Увеличивайте `kafka.consumerReplicas` в values и выполняйте Helm upgrade.
-Члены группы `gator-logs-v1` перераспределяют partitions автоматически. Полезный
+Члены группы `gator-logs-v2` перераспределяют partitions автоматически. Полезный
 параллелизм ограничен числом partitions каждого топика; увеличение partitions
-меняет распределение ключей, его выполняют планово. У каждой Vector реплики свой
-persistent disk buffer. Для SCRAM Kafka 4 нужен Vector 0.52+; в 0.51 есть
-несовместимость handshake. Collector продолжает читать файл с сохранённых checkpoints.
+меняет распределение ключей, его выполняют планово. Потребители работают как stateless Deployment с ограниченными memory buffers:
+Kafka offsets подтверждаются после HTTP delivery или записи в карантин.
+Неподтверждённые записи перечитываются после restart/rebalance; локальных PVC
+с недоставленными записями у остановленной реплики нет. Для SCRAM Kafka 4 нужен
+Vector 0.52+; в 0.51 есть несовместимость handshake. Collector продолжает читать файл с сохранённых checkpoints.
 VMAuth перечитывает маршруты каждые 5 секунд; Vector проверяет конфигурацию
 через polling, чтобы видеть атомарные обновления Kubernetes ConfigMap.
 
