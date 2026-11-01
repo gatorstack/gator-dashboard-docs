@@ -118,6 +118,11 @@ Inline/configMapRef/resourceSchemaRef — взаимоисключающие и�
 показываемых открыто; остальные маскированы. Для related-resources output
 принадлежит целевому ProductResource, а `fields` описывают поля каждой записи.
 
+Секция `renderer: monitoring` в `x-dashboard-detail.sections[]` встраивает
+проектные графики в карточку любого ресурса. `monitoring.panels` задаёт панели,
+`monitoring.bindings` связывает переменные с JSON Pointers или константами.
+[Поля, ограничения и пример](monitoring.md#графики-в-карточке-ресурса).
+
 ## ProductResource
 
 **Область:** namespace каталога. Группа/версия — `dashboard.gatorstack.dev/v1alpha1`.

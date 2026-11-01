@@ -129,6 +129,63 @@ spec:
 `{{label}}`. Для Helm экранируйте двойные фигурные скобки или храните spec в values
 с последующим `toYaml`, чтобы шаблонизатор Helm не интерпретировал legend.
 
+## Графики в карточке ресурса
+
+В `ProductPage.spec.schema.inline.x-dashboard-detail.sections[]` добавьте секцию
+`renderer: monitoring`. Она работает с любым GVK ресурса и тем же форматом панелей,
+что `MonitoringDashboard`. Ниже — фрагмент schema карточки условной базы данных:
+
+```yaml
+x-dashboard-detail:
+  tabs:
+    - {id: overview, title: Обзор}
+    - {id: monitoring, title: Мониторинг}
+  sections:
+    - title: Основное
+      tab: overview
+      renderer: fields
+      paths: [/metadata/name]
+    - title: Нагрузка базы данных
+      tab: monitoring
+      renderer: monitoring
+      emptyText: Метрики появятся после создания базы данных.
+      monitoring:
+        bindings:
+          database:
+            path: /status/databaseID
+          region:
+            path: /spec/region
+            fallbackPath: /status/region
+        panels:
+          - id: queries
+            title: Запросы в секунду
+            type: timeseries
+            unit: ops/s
+            queries:
+              - datasource: project
+                expr: sum(rate(database_queries_total{database=~"${database}",region=~"${region}"}[$__rate_interval]))
+                legend: Запросы
+            layout: {x: 0, y: 0, w: 36, h: 11}
+```
+
+`monitoring.bindings` содержит до 8 переменных. `{path, fallbackPath?}` читает
+скаляр из текущего объекта; `{value: строка}` задаёт константу. Не смешивайте
+`value` и пути. Имя переменной — буквы, цифры и `_`, начинается с буквы или `_`;
+префикс `__` зарезервирован. Каждый `${name}` в запросах должен быть объявлен.
+Используйте regex-селекторы `=~`: значение экранируется как буквальный regex и
+JSON-строка. Даже `.*` из поля объекта не превращается в выбор всех ресурсов.
+
+Если обязательное значение отсутствует, пусто, является массивом или объектом,
+секция показывает `emptyText` и не отправляет запросы. При смене ресурса или
+его идентификатора прежние графики сбрасываются. Скрытая вкладка запросы не
+выполняет. Период, обновление, единицы и сетка общие с основными дашбордами.
+
+Datasource всегда `project`; запросы проходят существующий авторизованный
+gateway текущего проекта. Пользователю нужны права на ресурс и мониторинг.
+Адреса VictoriaMetrics, учётные данные и tenant ID в schema не задаются.
+Для этой секции требуется включённое ядро мониторинга и сбор соответствующих
+метрик продуктом. Создания или редактора графиков в консоли нет.
+
 ## Экспорт через Kubernetes API
 
 ```yaml
