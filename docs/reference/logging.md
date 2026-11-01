@@ -2,7 +2,7 @@
 title: Контракты логирования
 ---
 
-Все CR ниже namespaced, API `logging.gatorstack.dev/v1alpha1`.
+LogSource и LogAccess — namespaced CR, API `logging.gatorstack.dev/v1alpha1`.
 
 | Kind | Размещение | Обязательные поля spec |
 |---|---|---|
@@ -64,3 +64,31 @@ Hits возвращает `buckets: [{time,count}]` и `total` без огран
 `resourceTitlePath` — необязательный JSON pointer подписи заказа.
 `LogSource.resultFields` — до 24 дополнительных name/title для вычисляемых колонок.
 Общий page renderer: `x-dashboard-view: logging`.
+
+
+## Автоматическое подключение и ingestion
+
+`LogSource.spec.autoAccess` (boolean, default false) включает общую платформенную
+Composition. Она создаёт immutable LogAccess во всех живых проектах данного
+backend, включая проекты без заказов. Ручные grants и список проектов в продукте
+не нужны. `ingestion` необязателен для уже существующего внешнего data plane.
+
+| Поле ingestion | Значение |
+| --- | --- |
+| kafkaTopic | Уникальное имя `gator-logs-*`, до 180 символов; unrouted зарезервирован |
+| ownership.resource | apiVersion/kind, необязательные namespace и matchLabels защищённого GVK |
+| ownership.namespacePath | JSON pointer имени namespace в объекте владельца |
+| ownership.namespaceUIDPath | Альтернатива namespacePath: pointer UID namespace |
+| ownership.projectUIDPath | Обязательный pointer текущего Project UID |
+| ownership.matchFields | 1–8 соответствий log field → pointer владельца, непустые строки |
+
+Ровно один namespace pointer обязателен. Source.fields, Source.filters и identity
+поля образуют allowlist ingestion; произвольные payload поля удаляются. GVK
+владелец и его RBAC чтения для Crossplane поставляются chart продукта.
+
+`LogAccessManager` — cluster-scoped XR того же API, один на backend. Его spec
+задаёт catalog/system namespaces, registry, native routes/consumer ConfigMaps,
+queryURL и Kafka параметры. Spec immutable; status содержит initialized,
+registryUID, projectCount/sourceCount/grantCount, phase. Registry сохраняет ID,
+UID и identity tombstones; удаление manager и очистка registry запрещены admission.
+Это административный ресурс платформы; logging.viewer/owner его не изменяют.
