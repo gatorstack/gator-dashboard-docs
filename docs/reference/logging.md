@@ -88,7 +88,8 @@ backend, включая проекты без заказов. Ручные grant
 
 `LogAccessManager` — cluster-scoped XR того же API, один на backend. Его spec
 задаёт catalog/system namespaces, registry, native routes/consumer ConfigMaps,
-queryURL и Kafka параметры. Spec immutable; status содержит initialized,
+queryURL и Kafka параметры. Identity backend/registry и Kafka cluster/bootstrap
+неизменяемы; partitions/replicas/retention настраиваются через values. Status содержит initialized,
 registryUID, projectCount/sourceCount/grantCount, phase. Registry сохраняет ID,
 UID и identity tombstones; удаление manager и очистка registry запрещены admission.
 Это административный ресурс платформы; logging.viewer/owner его не изменяют.

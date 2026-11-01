@@ -287,7 +287,8 @@ storage/collector и восстановление доставки после н
 меняет распределение ключей, его выполняют планово. У каждой Vector реплики свой
 persistent disk buffer. Для SCRAM Kafka 4 нужен Vector 0.52+; в 0.51 есть
 несовместимость handshake. Collector продолжает читать файл с сохранённых checkpoints.
-VMAuth перечитывает маршруты каждые 5 секунд; Vector следит за своей конфигурацией.
+VMAuth перечитывает маршруты каждые 5 секунд; Vector проверяет конфигурацию
+через polling, чтобы видеть атомарные обновления Kubernetes ConfigMap.
 
 Producer использует `acks=all`, topic min ISR, idempotent Kafka producer; consumers
 подтверждают доставку в HTTP sink. Семантика — at-least-once: после сбоя возможны
