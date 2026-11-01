@@ -128,3 +128,17 @@ HTTP(S) `url`, `existingSecret` (ключ `token` в namespace Dashboard). Crede
 один образ; `image.digest` позволяет закрепить его digest.
 
 [Установка](../operator-manual/monitoring.md), [GVK](monitoring.md).
+
+## Логирование
+
+```yaml
+logging:
+  backends:
+  - name: native
+    url: http://vmauth-logs.logging.svc:8427
+    existingSecret: gator-logging-reader
+```
+
+Secret находится в namespace Dashboard и содержит `token`. URL и credentials
+не переопределяются ProductResource или запросом клиента. По умолчанию список
+пустой. [Полная настройка](../operator-manual/logging.md).

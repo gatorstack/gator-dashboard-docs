@@ -394,3 +394,10 @@ Namespace является subject; ссылки на приватный пла�
 Мониторинг ядра использует MonitoringBackend, ProjectMonitoring, MetricSource,
 MetricOwnershipPolicy, MonitoringDashboard и MetricExport группы
 `monitoring.gatorstack.dev/v1alpha1`. [Поля и примеры](monitoring.md).
+
+## Клиентское логирование
+
+`logging.gatorstack.dev/v1alpha1`: LogSource описывает источник и безопасную
+проекцию, LogAccess закрепляет проектные UID и tenant и служит отдельным native
+RBAC разрешением чтения. Привязка к основному GVK задаётся в ProductResource.logging.
+[Справочник](logging.md), [установка и новый продукт](../operator-manual/logging.md).
