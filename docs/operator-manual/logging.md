@@ -49,7 +49,7 @@ Tenant IDs не переиспользуются. При пересоздани�
 
 Chart ожидает Secret `gator-logging-auth` с ключом `auth.yml`: native конфигурацию
 VMAuth с разными Bearer credentials записи и чтения. Для каждого проекта читатель
-имеет отдельный route: `src_paths: [/select/logsql/query]`, точный `src_headers`
+имеет отдельный route: `src_paths: [/select/logsql/(query|hits)]`, точный `src_headers`
 `AccountID: 1001`, fixed headers `AccountID: 1001`, `ProjectID: 0`, upstream
 `http://vlsingle-customers.logging.svc:9428`. Writer route принимает только
 `/write/team-a/insert/jsonline`, удаляет два сегмента префикса и назначает те же
@@ -182,7 +182,7 @@ stringData:
     users:
     - bearer_token: REPLACE_READER_CREDENTIAL
       url_map:
-      - src_paths: [/select/logsql/query]
+      - src_paths: [/select/logsql/(query|hits)]
         src_headers: ['AccountID: 1001']
         headers: ['AccountID: 1001', 'ProjectID: 0']
         url_prefix: http://vlsingle-customers.logging.svc:9428
@@ -206,3 +206,50 @@ VMAuth, сохранив существующие credentials и маршрут�
 проекта не освобождает его ID. Raw RGW ops файл доступен только root; стандартный
 logrotate ограничивает его локальную историю. Vector передаёт только безопасную
 проекцию; raw файл и его backups также требуют административной защиты.
+
+## Проектный исследователь логов
+
+ProductPage с `schema.inline.x-dashboard-view: logging` подключает общий экран;
+встроенный каталог мониторинга поставляет страницу `monitoring-logs`. Ни имя
+продукта, ни GVK не зашиты в renderer. Explorer строит список источников из
+ProductResource.logging, проверяет LogSource/LogAccess и выполняет discovery/list
+основных CR с caller token. Каждый кандидат дополнительно проверяется через GET.
+Стандартной роли продукта нужны list/get основного GVK и get его LogAccess.
+Права мониторинга сами по себе не открывают все продуктовые источники.
+
+Дополнительные поля binding:
+
+```yaml
+logging:
+- id: requests
+  title: Запросы
+  resourceTitlePath: /metadata/annotations/example.org~1display-name
+  sourceRef: {name: database-requests}
+  matchFields:
+    cluster_uid: /metadata/uid
+```
+
+Для вычисляемых результатов Source может объявить дополнительный allowlist:
+
+```yaml
+spec:
+  resultFields:
+  - {name: count, title: Количество}
+  - {name: total, title: Итого}
+  - {name: average, title: Среднее}
+```
+
+Это добавление к обычным `fields`: запрос `* | stats count() as count` показывает
+вычисленную колонку, сохраняя безопасную проекцию. Произвольные поля backend
+автоматически не публикуются. Нормализация и удаление чувствительных данных
+перед ingestion остаются обязательными.
+
+Native VMAuth reader должен разрешать только `/select/logsql/(query|hits)`.
+Перечисление tenants, административные endpoints и произвольные пути закрыты.
+Обе операции получают один и тот же проверенный tenant и native extra_filters.
+Для нескольких заказов строятся полные ветки `(identity AND время создания) OR ...`;
+отдельные списки значений разных identity полей не используются. Такой scope
+применяется и к вложенным query/union/join. Гистограмма запрашивается через hits
+с ignore_pipes=1 и ограниченным шагом, а не вычисляется по урезанной выдаче.
+Лимит области — 128 заказов на binding; превышение закрывает запрос, не расширяет
+его до всего tenant. Список каталога ограничен 256 ProductResource.

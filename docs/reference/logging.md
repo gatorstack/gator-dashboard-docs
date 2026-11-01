@@ -29,3 +29,38 @@ tenant или identity predicates. `ProductPage` использует renderer `
 Автообновление и выгрузка используют те же полномочия. Постоянного tail endpoint нет.
 
 [Установка и пример нового продукта](../operator-manual/logging.md).
+
+## Проектные запросы
+
+`GET /api/projects/{namespace}/logging/catalog` возвращает `streams`:
+`resourceRef`, `logID`, `source`, `title`, `fields`, `resources` (name/uid/title).
+Источники без LogAccess или доступных заказов отсутствуют. Каталог не выполняет
+запросы в VictoriaLogs.
+
+`POST /api/projects/{namespace}/logging/query` требует сессию и CSRF. JSON body:
+
+```json
+{
+  "resourceRef": "s3-buckets",
+  "logID": "access",
+  "allResources": true,
+  "query": "* | stats count() as count",
+  "start": "2026-11-01T10:00:00Z",
+  "end": "2026-11-01T11:00:00Z",
+  "operation": "query",
+  "limit": 200
+}
+```
+
+`operation`: query (default) либо hits. При `allResources: false` укажите
+`resources: [{"name":"order-name","uid":"immutable-uid"}]`; пустой массив даёт
+пустую область. Одновременные allResources и непустой resources запрещены.
+Лимиты: 128 ресурсов, 4096 символов query, 1000 строк и 4 MiB ответа, 30 дней.
+Hits возвращает `buckets: [{time,count}]` и `total` без ограничения числом строк
+таблицы. `fields/items` — безопасная проекция query, `resources` — проверенный scope.
+Неизвестные поля, backend URLs/tenant IDs/filter overrides не принимаются.
+
+`ProductResource.logging[].title` — подпись потока (до 160 символов),
+`resourceTitlePath` — необязательный JSON pointer подписи заказа.
+`LogSource.resultFields` — до 24 дополнительных name/title для вычисляемых колонок.
+Общий page renderer: `x-dashboard-view: logging`.
