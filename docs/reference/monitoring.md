@@ -186,6 +186,22 @@ gateway текущего проекта. Пользователю нужны п�
 Для этой секции требуется включённое ядро мониторинга и сбор соответствующих
 метрик продуктом. Создания или редактора графиков в консоли нет.
 
+### Привязка карточки S3-бакета
+
+В schema S3Bucket используются наблюдаемые значения основного CR:
+
+| Binding | JSON Pointer | Метрики |
+|---|---|---|
+| `bucket` | `/status/atProvider/bucket` | label `bucket` во всех панелях |
+| `tenant` | `/status/atProvider/tenant` | label `tenant` в RGW counters |
+| `owner` | `/status/atProvider/owner` | label `uid` в bucket stats |
+
+`owner` — идентификатор владельца RGW, а не Kubernetes UID CR. Например, запрос
+количества объектов: `max(radosgw_usage_bucket_objects{bucket=~"${bucket}",uid=~"${owner}"})`.
+Трафик фильтруется по `bucket` и `tenant`. Проектная граница задаётся gateway и
+не зависит от этих подстановок. До получения всех bindings запросы не выполняются.
+Типы панелей, единицы и подстановка остаются общими для всех продуктов.
+
 ## Экспорт через Kubernetes API
 
 ```yaml
