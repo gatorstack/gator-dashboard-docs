@@ -11,7 +11,7 @@ title: Monitoring API
 | ProjectMonitoring | Namespaced | Контроллер | Immutable привязка проекта к accountID |
 | MetricSource | Cluster | Chart продукта | Native scrape spec и allowlist метрик |
 | MetricOwnershipPolicy | Cluster | Chart продукта | Discovery GVK и predicates владения |
-| MonitoringDashboard | Namespaced | Chart или пользователь | Панели, запросы, переменные, сетка |
+| MonitoringDashboard | Namespaced | Helm/GitOps/Kubernetes API | Панели, запросы, переменные, сетка |
 | MetricExport | Namespaced | Пользователь | Remote write и credential Secret ref |
 
 ## Универсальный источник и владелец
@@ -87,7 +87,8 @@ VMAgent. Provider integration управляет исходными ресурс
 ## Дашборд из чарта продукта
 
 Разместите ресурс в catalog namespace Dashboard, чтобы он появился в сервисном
-списке. Тот же Kind в namespace проекта создаёт пользовательский дашборд.
+списке. Тот же Kind в namespace проекта создаёт проектный дашборд. Оба вида
+создаются и изменяются только через CRD; консоль предоставляет просмотр.
 
 ```yaml
 apiVersion: monitoring.gatorstack.dev/v1alpha1

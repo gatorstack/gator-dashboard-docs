@@ -81,8 +81,10 @@ kubectl --context "$CONTEXT" get projectmonitorings -A
 Дополнительные права на исходные GVK задаются администратором в
 `monitoring.sourcePermissions`. Доступ к системным credentials не выдаётся
 клиентским ролям. Роли monitoring.auditor/viewer читают мониторинг, editor/owner
-также управляют проектными дашбордами и экспортами. Общие роли собираются штатной
-Kubernetes aggregation.
+также управляют экспортами в консоли и проектными MonitoringDashboard напрямую
+через Kubernetes API. В консоли нет создания, копирования или редактирования
+дашбордов: публикуйте CR через Helm, GitOps либо Kubernetes API. Общие роли
+собираются штатной Kubernetes aggregation.
 
 ## Продуктовые интеграции
 
