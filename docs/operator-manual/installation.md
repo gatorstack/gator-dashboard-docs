@@ -3,7 +3,7 @@
 Руководство устанавливает Dashboard в один Kubernetes-кластер и создаёт первый
 проект с доступом для ServiceAccount. Затем можно подключить
 [Gator Dex](dex.md) для обычных пользователей и отдельно [биллинг](billing-installation.md).
-Оператор и API сбора метрик устанавливаются отдельно: [Мониторинг сервисов](monitoring.md).
+Мониторинг входит в ядро Gator; VictoriaMetrics Operator и data plane устанавливаются отдельно: [мониторинг](monitoring.md).
 
 ## Перед началом
 

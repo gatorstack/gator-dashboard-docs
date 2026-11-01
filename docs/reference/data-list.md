@@ -2,26 +2,27 @@
 
 `x-dashboard-view: data-list` показывает табличные данные именованного адаптера.
 Он применяется, когда данные хранятся вне Kubernetes; строки не копируются в CR.
-Пример страницы для установленного продукта мониторинга:
+Пример контракта страницы внешних данных (Product и ProductResource подключаются
+администратором отдельно):
 
 ```yaml
 apiVersion: dashboard.gatorstack.dev/v1alpha1
 kind: ProductPage
 metadata:
-  name: monitoring-metrics
+  name: external-entries
   namespace: gator-dashboard
 spec:
-  productRef: {name: monitoring}
-  title: Метрики проекта
+  productRef: {name: external-data}
+  title: Внешние данные проекта
   schema:
     inline:
       type: object
       x-dashboard-view: data-list
       x-dashboard-data-list:
-        adapterRef: {name: project-metrics}
-        resourceRef: {name: monitoring-tenant}
+        adapterRef: {name: external-data}
+        resourceRef: {name: external-binding}
         resourceName: project
-        operation: metric-series
+        operation: entries
         columns:
           - {key: name, title: Метрика}
           - {key: labels, title: Лейблы}
@@ -39,8 +40,8 @@ spec:
 Target содержит `apiVersion`, `kind`, `namespace`, `name`, `uid`; содержимое CR
 и caller credential не передаются. Адаптер обязан повторно проверить identity
 и ограничить доступ к своему хранилищу. Успешный ответ содержит `items`, например строку с полями `name` и `labels`.
-Адаптер мониторинга возвращает полный набор лейблов текстом; разные наборы
-остаются отдельными строками.
+Формат key-value может представить строковую map одной колонкой.
+Мониторинг ядра использует отдельный [GVK и авторизованный API](monitoring.md).
 
 Допускается 1–16 колонок с уникальными identifier `key` и `title`. Только
 объявленные scalar значения (строка, число, boolean, null) передаются браузеру.

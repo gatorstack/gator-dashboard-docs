@@ -22,7 +22,7 @@ module.exports = {
     ] },
     { type: 'category', label: 'Справочник', items: [
       'reference/entities', 'reference/roles', 'reference/helm-values',
-      'reference/annotations', 'reference/data-list', 'reference/history', 'reference/quotas', 'reference/resource-map', 'reference/billing-binding', 'reference/cost-report',
+      'reference/annotations', 'reference/monitoring', 'reference/data-list', 'reference/history', 'reference/quotas', 'reference/resource-map', 'reference/billing-binding', 'reference/cost-report',
     ] },
     'faq',
   ],

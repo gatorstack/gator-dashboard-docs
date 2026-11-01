@@ -118,3 +118,13 @@ HTTP(S) `url`, `existingSecret` (ключ `token` в namespace Dashboard). Crede
 монтируются read-only; caller token адаптеру не пересылается. URL не может
 содержать username/password, query или fragment; redirects запрещены.
 См. [контракт data-list](data-list.md) и [мониторинг](../operator-manual/monitoring.md).
+
+## Мониторинг ядра
+
+`monitoring.enabled` включает Product, API и контроллер; `credentialNamespace`
+задаёт защищённое хранилище credentials, `backend` — MonitoringBackend spec.
+`sourcePermissions` расширяет RBAC контроллера на объявленные исходные GVK.
+Сетевые и export policy задаются в backend. Контроллер и Dashboard используют
+один образ; `image.digest` позволяет закрепить его digest.
+
+[Установка](../operator-manual/monitoring.md), [GVK](monitoring.md).

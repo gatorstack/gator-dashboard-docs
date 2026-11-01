@@ -388,3 +388,9 @@ native Customer проекта. Spec: planRef.kind/name, startAt, необяза
 Status: native subscription/customer/plan ID и версия, даты, family, phase и Ready.
 Namespace является subject; ссылки на приватный план другого проекта запрещены.
 [Полный справочник и примеры](../billing/subscriptions.md).
+
+## Мониторинг
+
+Мониторинг ядра использует MonitoringBackend, ProjectMonitoring, MetricSource,
+MetricOwnershipPolicy, MonitoringDashboard и MetricExport группы
+`monitoring.gatorstack.dev/v1alpha1`. [Поля и примеры](monitoring.md).
