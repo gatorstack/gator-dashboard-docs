@@ -153,12 +153,18 @@ Inline/configMapRef/resourceSchemaRef — взаимоисключающие и�
 | `spec.create.selections[].minimums` | inputPath/fromSelected: числовая нижняя граница из проверенного выбора |
 | `mappings[].transform: String` | Преобразование выбранного числа в строковое поле, например metadata |
 | `spec.edit.contextMappings` | fromObject/toInput: доверенный контекст из существующего CR |
+| `spec.edit.initialMappings` | Начальные значения формы; `toInput` поддерживает вложенные object-поля через JSON pointer |
 | `spec.edit.preconditions`, `spec.actions[].preconditions` | path/values/message, необязательные whenChanged пути spec |
 | `spec.lookups.*.conditions` | Доступность варианта: path/values/message, conditionType для именованного condition |
 | `preconditions[].operator: Empty` | Проверка отсутствующей/null/пустой коллекции без values; скаляры и непустые массивы/объекты не проходят |
 | `spec.outputs` | Именованные пути либо Secret outputs основного CR |
 | `spec.outputs[].secretRef` | namePath в основном CR и allowlist fields (id/key/title); Secret того же namespace с owner UID основного CR. Optional ownerRef (resourceRef, namePath, uidPath) проверяет прямого дочернего владельца через controller UID |
 | `spec.execution.mode` | Direct; Gated блокируется до подключения runtime |
+
+Ссылку каталога без revision форма дополняет актуальной версией только при
+совпадении name, namespace и UID. Подмена UID требует нового выбора; сохранённая
+revision остаётся прежней до явного обновления после конфликта.
+
 
 Для namespaced target выбирается `namespacePolicy: CurrentProject` либо
 `namespacePolicy: Fixed` с фиксированным `namespace`. Для `scope: Cluster`
