@@ -31,6 +31,7 @@ kubectl apply --server-side -f products/mongodb/chart/crds/
 
 ```yaml
 systemNamespace: gator-mongodb-system
+createSystemNamespace: false
 projectNamespaces: [my-project]
 controller:
   image: ghcr.io/gatorstack/gator-mongodb:0.1.0
@@ -53,7 +54,9 @@ profile:
         medium: {id: flavor-medium-id, vcpu: 4, memoryGiB: 4}
 ```
 
-Подготовьте pull Secret в служебном namespace штатным секретным механизмом.
+Создайте namespace `kubectl create namespace gator-mongodb-system`, затем
+подготовьте pull Secret в нём штатным секретным механизмом. В примере
+`createSystemNamespace: false` сохраняет владение namespace у администратора.
 Не помещайте registry credentials в values или Git. Настройте DNS домена так,
 чтобы `A-B-C-D.mongo.example.org` разрешалось в floating IP `A.B.C.D` каждого
 узла. В study для этой функции используется sslip.io. На VM peer hostname
@@ -86,10 +89,10 @@ boot volumes: минимальный shard требует 11 VM/дисков, п
 RoleBinding в проекте. Не выдавайте продуктовым ролям чтение всех Secrets.
 
 ```sh
-kubectl -n my-project get mongodbcluster my-mongodb \
-  -o jsonpath='{.status.connectionSecretRef.name}'
+connection_role="$(kubectl -n my-project get mongodbcluster my-mongodb \
+  -o jsonpath='{.status.connectionSecretRef.name}')"
 kubectl -n my-project create rolebinding mongodb-app-connection \
-  --role=mongodb-mg-replace-with-resource-id --user=application-owner
+  --role="$connection_role" --user=application-owner
 ```
 
 Для диагностики смотрите `MongoDBCluster.status`, composed `MongoDBRuntime`,
