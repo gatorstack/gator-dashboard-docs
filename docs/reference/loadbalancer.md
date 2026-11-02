@@ -64,3 +64,13 @@ Compute с label `iaas.gatorstack.dev/managed=true`. Отдельного addres
 Удаление использующего XR снимает ассоциацию и сохраняет выбранный общий адрес.
 
 Установка и сценарии: [руководство L4](../operator-manual/loadbalancer.md).
+
+
+## Журнал состояний
+
+При `logging.enabled=true` LogSource `loadbalancer` использует фиксированный
+`gator_source=octavia-l4`. ProductResource связывает журнал с NetworkLoadBalancer
+по `resource_uid=/metadata/uid`. События `load_balancer_state` и `target_state`
+содержат `operating_status`, `provisioning_status`, `region`, `loadbalancer`,
+`resource_uid`, `target_uid`, `_time`. Project UID служит маршрутизации ingestion;
+он не принимается из браузера. Доступ — общая проектная роль `logging.viewer`.

@@ -138,3 +138,68 @@ namespace. Ссылка содержит `name`, `namespace`, `uid`, `resourceVe
 ВМ и балансировщику второй потребитель получает конфликт, а текущая привязка
 не переносится. Общий список показывает ресурс-потребитель; отвязку от L4
 выполняйте удалением соответствующего балансировщика.
+
+
+## Подключить журналы состояний
+
+Нужна установленная [платформа логирования](logging.md) с Kafka/Strimzi,
+LogAccessManager, Vector и VictoriaLogs. В профиле продукта включите источник:
+
+```yaml
+logging:
+  enabled: true
+  backend: native
+  kafka:
+    namespace: logging
+    cluster: gator-logs
+    topic: gator-logs-loadbalancer
+    user: gator-l4-logs
+```
+
+Повторите установку продукта. Пакет создаст LogSource и выделенного KafkaUser
+с правами Write/Describe только на topic L4; topic и проектные LogAccess
+согласует общий LogAccessManager. В `kafka.internalProducerPeers` профиля
+платформы логирования разрешите namespace и pod наблюдателя:
+
+```yaml
+kafka:
+  internalProducerPeers:
+  - namespaceSelector:
+      matchLabels: {kubernetes.io/metadata.name: gator-iaas-catalog}
+    podSelector:
+      matchLabels: {app: iaas-volume-observer}
+```
+
+Обновите платформу логирования. Дождитесь Ready у KafkaUser. Сохраните его
+`password` и `ca.crt` из Secret `gator-logs-cluster-ca-cert` в служебном Secret
+`gator-l4-log-producer` namespace OpenStack-интеграции. Используйте штатную
+доставку Secret; не переносите этот credential в проекты или values-файлы.
+В профиле OpenStack-интеграции включите коллектор:
+
+```yaml
+iaas:
+  logging:
+    enabled: true
+    existingSecret: gator-l4-log-producer
+    bootstrap: gator-logs-kafka-bootstrap.logging.svc:9093
+    topic: gator-logs-loadbalancer
+    user: gator-l4-logs
+    image: timberio/vector:0.52.0-debian
+    storage: 1Gi
+    storageClass: local-path
+```
+
+Повторите установку OpenStack-интеграции. Наблюдатель и стандартный Vector
+работают в одном pod с retained PVC для JSONL, checkpoints и disk buffer.
+При обновлении сохраняйте PVC и credentials. При смене пароля обновите Secret
+и перезапустите pod. Убедитесь, что оба контейнера работают, topic Ready,
+LogAccess появился в проектах, а новый балансировщик публикует события во
+вкладку **Логи** и проектный explorer. Доступ назначается ролью `logging.viewer`.
+
+Публикуются только Project UID, UID/имя балансировщика, регион, вид события,
+operating/provisioning status и UID цели. События содержат начальный снимок и
+изменения; перезапуск может повторить снимок. Ошибки API, credentials и сырые
+ответы не передаются. Файлы ограничены ротацией 8×8 MiB, очередь Vector —
+512 MiB; длительная недоступность сверх этой ёмкости может потерять старые
+локальные записи. В VictoriaLogs записи хранятся 30 дней после приёма,
+включая удалённые заказы. Запись содержимого TCP/UDP-трафика не выполняется.
