@@ -892,3 +892,58 @@ x-dashboard-list:
 используют `secondary`. `success` — зелёная плашка с поддержкой обеих тем.
 Та же настройка доступна для badge-полей карточки, включая `header.status`.
 Имена статусов и подписи задаёт продукт; произвольный CSS в схеме не требуется.
+
+## Кнопка «Показать код» на форме заказа
+
+В canonical schema создания любого ProductResource можно включить просмотр
+основного Kubernetes-ресурса в YAML. Это работает для обычных CR и Crossplane XR;
+отдельный renderer для продукта не нужен.
+
+Добавьте `codePreview` в существующий `spec.create.inputSchema.inline` (либо в
+JSON Schema из его ConfigMap):
+
+```yaml
+x-dashboard-form:
+  codePreview:
+    enabled: true
+    redactPaths:
+      - /spec/password
+```
+
+Сохраните остальные поля `x-dashboard-form`, properties, required и mappings.
+`redactPaths` необязателен: это до 64 JSON Pointer к полям **готового ресурса**,
+которые заменяются на `<скрыто>`. Перечислите все чувствительные поля, включая
+копии/производные значения в других полях. Пути не разворачивают Secret refs.
+Если скрытые поля есть, для применения скопированного YAML их нужно заполнить.
+Скрытие не меняет ввод формы и фактический запрос создания.
+
+Create-страница должна ссылаться на canonical schema:
+
+```yaml
+spec:
+  productRef: {name: my-product}
+  resourceRef: {name: my-orders}
+  view: Create
+  schema:
+    resourceSchemaRef:
+      operation: create
+```
+
+После обновления Helm-пакета/ConfigMap и перезагрузки каталога кнопка появится
+внизу формы. Заполните обязательные поля и нажмите её: диалог покажет YAML с
+итоговыми apiVersion/kind/name/namespace, выбранными справочниками и mappings.
+Пользователю нужны доступ к проекту/каталогу, чтение lookup и `create` целевого
+ресурса в его действительном scope. Annotation не расширяет Kubernetes RBAC.
+Без `enabled: true` прежние формы продолжают работать без этой кнопки.
+
+Просмотр доступен для Direct Create. Он не создаёт ресурс, invocation и резерв
+квоты, не вызывает admission dry-run. При связанных действиях показывается
+основной CR; зависимые ресурсы появляются после подтверждения заказа.
+UID/status, admission defaults и служебные runtime stamps могут добавляться
+при создании. Подтверждение заново выполняет обычные проверки.
+
+API: `POST /api/projects/{namespace}/products/{product}/pages/{page}/preview`,
+тело `{"input": {...}}`, обязательны аутентификация и `X-Gator-CSRF: 1`.
+Ответ содержит `manifest` (YAML) и `redacted`; Cache-Control — `no-store`.
+Объект/GVK/namespace и настройка скрытия берутся из canonical контракта, а не из
+HTTP-запроса. Некорректная форма возвращает ошибку; устаревший выбор — конфликт.
