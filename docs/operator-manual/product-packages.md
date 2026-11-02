@@ -23,6 +23,8 @@
 
 Сначала установите [консоль](installation.md). В каталоге `gator-products`
 находятся работающие пакеты `products/home`, `products/iaas`, `products/vpc`.
+Также доступен [Балансировщик L4](loadbalancer.md): namespaced XRD, Octavia,
+целевые группы и резервирование адресов.
 Каждый имеет собственный `chart/` и values. Выполните из этого репозитория:
 
 ```sh

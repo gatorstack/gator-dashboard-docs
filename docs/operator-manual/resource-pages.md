@@ -947,3 +947,9 @@ API: `POST /api/projects/{namespace}/products/{product}/pages/{page}/preview`,
 Ответ содержит `manifest` (YAML) и `redacted`; Cache-Control — `no-store`.
 Объект/GVK/namespace и настройка скрытия берутся из canonical контракта, а не из
 HTTP-запроса. Некорректная форма возвращает ошибку; устаревший выбор — конфликт.
+
+Массив в форме может задавать `x-dashboard-array` с `addLabel`, `itemTitle` и
+`removeLabel`. Для lookup-ссылок внутри массива используйте validation-only
+selection, например `inputPath: /rows/*/source`, без mappings/minimums.
+Обычный mapping копирует массив; каждая identity повторно проверяется с правами
+пользователя до записи основного CR.
