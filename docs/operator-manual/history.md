@@ -167,6 +167,13 @@ spec:
   retentionDays: 30
   capture:
     catalogNamespace: gator-dashboard
+    controllerSubjects:
+    - namespace: crossplane-system
+      name: crossplane
+    - namespace: crossplane-system
+      namePrefix: provider-example-
+    - namespace: product-system
+      name: product-controller
     result:
       success:
       - {type: Ready, status: 'True'}
@@ -203,7 +210,35 @@ Catalog aliases одной сущности дают одну запись, ог
 и обязателен даже при Ready=True. ignorePaths исключает служебные spec-поля
 Composition из сравнения; бизнес-поля исключать нельзя. Старый статус или
 неподтверждённое поколение не становятся успехом. Timeout даёт Unknown без повтора.
-Удаление ожидает исчезновения UID. Новая конфигурация даёт Superseded старой операции.
+Удаление ожидает исчезновения UID. Следующая принятая пользовательская мутация
+даёт Superseded незавершённой операции того же UID. Late initialization и
+метаданные контроллеров не вытесняют её; подтверждается текущее поколение ресурса.
+
+## Пользовательские операции и контроллеры
+
+`capture.controllerSubjects` задаёт только доверенные identities reconcile.
+Элемент содержит либо точный `username`, либо `namespace` и один из `name`/
+`namePrefix` ServiceAccount. Префикс нужен для версионируемых provider accounts;
+ограничьте его конкретным семейством контроллера. Не объявляйте все ServiceAccount
+или namespace клиентов контроллерами: kubectl/CI с собственным токеном должен
+оставаться инициатором операции.
+
+Основной журнал показывает `Operation`. `ControllerStep` сохраняет настоящего
+исполнителя в `spec.actor` и API-код; он раскрывается во вкладке шагов связанной
+операции. Связь определяется по тому же target UID или единственному владельцу
+из ownerReferences в текущем проекте. При наличии controller ownerReference
+используется он. Цепочка ограничена 16 уровнями. Неоднозначное владение,
+отсутствующий UID, неизвестная цепочка или другой проект не дают связи.
+Внутренние повторы и HTTP 409 остаются шагами и не заменяют lifecycle-итог.
+
+Оператор автоматически классифицирует существующие записи, не меняя immutable
+spec, автора или срок хранения. Для старых записей он читает владельца только
+у ресурса с тем же UID. Если объект уже удалён и владелец ранее не сохранён,
+связь не восстанавливается по совпадению имени. Несвязанные технические запросы
+доступны администратору через Kubernetes HistoryRecord до обычного TTL.
+Связь описывает согласование между пользовательскими операциями, а не
+распределённый tracing. Чтение операции и её шагов требует caller get/list
+HistoryRecord; сервисный токен Dashboard не повышает права пользователя.
 
 Validating webhook sideEffects=None проецирует безопасный UID/generation/diff
 в audit annotations, не изменяя ресурс. Проекция ограничена 8 KB; значения при

@@ -25,6 +25,11 @@ API-группа — `history.gatorstack.dev/v1alpha1`. Оператор пос�
 | status.reason / observedAt | Основание и время результата |
 | status.tracking | Ограниченная проекция поколения/spec fingerprint/declared desired values |
 | status.details | Безопасный контекст Dashboard action/source/changes; API объединяет с отображаемыми spec-полями |
+| status.entryType | Operation либо ControllerStep; mutable проекция исходного аудита |
+| status.operationRef | Имя и UID HistoryRecord исходной операции для связанного шага |
+| status.supersededBy | Следующая принятая пользовательская операция того же target UID |
+| status.tracking.owners / ownershipCaptured | Единственный подтверждённый owner GVK/name/UID; никаких тел объектов |
+| capture.controllerSubjects | Явные reconcile identities: username либо namespace + name/namePrefix ServiceAccount |
 | metadata.annotations[history.gatorstack.dev/console-context] | true только у записи с контекстом Dashboard; native-only события не считаются действиями консоли |
 | spec.origin / projectUID | Источник KubernetesAudit и закреплённый UID проекта |
 | HistoryPolicy.spec.capture.catalogNamespace | Каталог ProductResource |
@@ -39,7 +44,12 @@ Spec записи неизменяем. Кластерный администр�
 это операционная история, без криптографической защиты от администратора.
 
 `GET /api/projects/:namespace/activity` принимает `uid`, `actor`, `operation`,
-`outcome`, `days`, `search` (до 256 байт), `limit` (1–100) и `continue`. Ответ: items, continue,
+`outcome`, `days`, `search` (до 256 байт), `limit` (1–100) и `continue`. `parent` выбирает
+шаги операции по имени HistoryRecord; он не совмещается с `uid`. Проверяются
+чтение исходной записи и совпадение её UID с operationRef, затем list её шагов.
+По умолчанию выдаются операции; `uid` включает доказанно связанные операции
+владельца ресурса. Фильтры автора/итога относятся к исходной операции.
+Ответ: items, continue,
 retentionDays. Права чтения проверяются от пользователя для текущего проекта.
 `search` — регистронезависимая подстрока в метаданных: ID, инициатор, продукт,
 контракт ресурса, операция/действие, name/UID/GVK target и source. Пробелы по
