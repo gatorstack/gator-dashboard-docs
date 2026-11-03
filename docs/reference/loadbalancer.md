@@ -60,13 +60,20 @@ address, port, protocol, id (UUID MemberV2), poolID. Health в status XR не
 | Поле spec | Значение |
 | --- | --- |
 | region | Регион; неизменяемо |
-| targets | От 1 до 32 уникальных IPv4-адресов с `subnet` ссылкой |
+| targets | От 1 до 32 интерфейсов/IPv4-адресов; адреса должны быть уникальны |
 | description, tags | Описание и метки |
 | deletionProtection | Защита от удаления |
 
-Каждый target содержит `address` и pinned ссылку `subnet`. Подсети должны
-принадлежать тому же проекту и региону. `status.targets` содержит проверенные
-address, subnetID, subnetName и subnetUID. Ready группы означает проверку ссылок
+Новый target содержит pinned ссылку на PortV2: `name`, `namespace`, `uid`,
+`resourceVersion`, необязательный `revision`, а также `address` — выбранный
+наблюдаемый IPv4 этого интерфейса. Интерфейс должен быть подключён к ВМ текущего
+проекта и региона. Composition определяет единственную подсеть по network ID,
+cloud subnet IDs и CIDR. Саму подсеть указывать не требуется.
+
+Прежний формат `address` + pinned `subnet` также принимается API. UI сохраняет
+его до явной замены строкой из списка интерфейсов. `status.targets` содержит
+проверенные address, subnetID, subnetName и subnetUID; для новых целей — также
+interfaceName, interfaceUID, interfaceID и instanceName. Ready группы означает проверку ссылок
 и адресации; сетевой health проверяется балансировщиком.
 
 ## Общие внешние адреса

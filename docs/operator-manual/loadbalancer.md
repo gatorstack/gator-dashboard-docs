@@ -13,6 +13,12 @@ Amphora. Консоль управляет Kubernetes API продукта; Cros
 
 ## Подготовка
 
+Для выбора интерфейсов в пакете L4 0.4 нужен Dashboard 0.25.22 или новее:
+сначала обновите консоль, затем пакет продукта. Источник — проектные PortV2
+VPC с наблюдаемыми fixed IPs. Роль L4 viewer включает чтение этих интерфейсов;
+Composition получает read-only доступ к PortV2/SubnetV2. Внешние интерфейсы,
+для которых нет проектного PortV2, сначала должны быть представлены в VPC API.
+
 Администратору нужны Crossplane v2 с namespaced XR, provider-openstack с
 namespaced API Octavia и Neutron, работающий Octavia Amphora и внешняя сеть
 Neutron. В namespace каждого проекта должны существовать свои ProviderConfig
