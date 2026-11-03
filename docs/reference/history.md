@@ -64,3 +64,7 @@ retentionDays. Права чтения проверяются от пользо�
 `action: reveal:<output id>` обозначает output ProductResource, а target —
 основной CR. Secret data, Secret reference и значения полей в запись не включаются.
 Итог Accepted подтверждает успешный Kubernetes GET, а не создание нового ключа.
+
+`status.tracking.previousSpecHash/previousGeneration` описывают состояние до
+controller write; `effectiveSpecHash/effectiveGeneration` закрепляют подтверждённую
+конфигурацию операции. Разрыв даёт `ConfigurationUnconfirmed` без ложного успеха.
