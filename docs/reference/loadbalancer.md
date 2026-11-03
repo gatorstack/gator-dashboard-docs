@@ -62,7 +62,11 @@ address, port, protocol, id (UUID MemberV2), poolID. Health в status XR не
 | region | Регион; неизменяемо |
 | targets | От 1 до 32 интерфейсов/IPv4-адресов; адреса должны быть уникальны |
 | description, tags | Описание и метки |
-| deletionProtection | Защита от удаления |
+
+
+У целевых групп нет отдельной защиты от удаления. Прежнее поле
+`spec.deletionProtection` допустимо для совместимости, но игнорируется.
+Удаление используемой группы по-прежнему блокируется Crossplane Usage.
 
 Новый target содержит pinned ссылку на PortV2: `name`, `namespace`, `uid`,
 `resourceVersion`, необязательный `revision`, а также `address` — выбранный
