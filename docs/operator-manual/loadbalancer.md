@@ -223,3 +223,39 @@ NetworkPolicy применяется CNI асинхронно. При сетев
 pod или hostNetwork-нагрузки. Для проектов с такими дополнительными правами
 нужна отдельная изоляция исходящего трафика scraper; один node-SNAT CIDR не
 отличает доверенный VMAgent от остальных нагрузок узла.
+
+
+## Подключить пользовательские группы безопасности
+
+Нужны Octavia API 2.29+ с поддержкой `vip_sg_ids`, namespaced Neutron SG API и
+установленные provider-kubernetes/provider-ansible. Добавьте в профиль L4:
+
+```yaml
+securityGroups:
+  enabled: true
+  providerConfig: gator-l4-local
+  kubernetesServiceAccount: existing-provider-kubernetes
+  ansibleServiceAccount: existing-provider-ansible
+```
+
+Используйте ServiceAccount существующих providers в crossplane-system; пакет
+не переустанавливает общие providers. У provider-ansible должен быть доступ
+к исходным проектным application credential Secret. Пакет выдаёт ему чтение
+primary XR для защиты от устаревших запусков. Credentials читаются по исходным
+ссылкам; токены и ответы API скрыты `no_log`.
+
+Формы показывают готовые SG того же проекта/региона. Composition повторно
+проверяет identity и создаёт Usage. Стандартный AnsibleRun задаёт `vip_sg_ids`
+через Octavia; старое `LoadbalancerV2.securityGroupIds` меняет только Neutron
+VIP-порт и для этой операции не используется. VIP, внешний адрес и основной
+cloud ID сохраняются. Пустой список возвращает автоматические правила.
+Изменения правил backend-ВМ администратор выполняет отдельно.
+
+Octavia не допускает пользовательские SG вместе с `listener.allowed_cidrs`.
+Поэтому перед сменой SG Composition сначала останавливает endpoint метрик,
+убирает это поле, применяет SG, затем включает endpoint снова. Для custom SG
+создаётся служебная группа с доступом к порту метрик только из scraperCIDRs.
+При возврате к автоматическому режиму восстанавливается `allowed_cidrs`.
+Правила разных SG складываются: пользовательское разрешение всех портов для
+общих сетей также откроет порт метрик. Оставляйте его только доверенным
+scraper-источникам. Служебные SG и исполнения защищены от клиентских изменений.

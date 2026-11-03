@@ -13,6 +13,7 @@ CRD создаются Crossplane XRD, а не отдельным операто
 | addressMode | Auto или Reserved; неизменяемо, используется для External |
 | reservedAddress | Ссылка на свободный FloatingipV2 из общего Compute списка при Reserved |
 | listeners | От 1 до 8 обработчиков |
+| securityGroups | Необязательные pinned ссылки на 0–5 SecgroupV2 того же проекта/региона; редактируются |
 | description | Описание до 2048 символов |
 | tags | До 31 строковой метки |
 | deletionProtection | Запрет удаления до явного отключения |
@@ -83,3 +84,14 @@ Compute с label `iaas.gatorstack.dev/managed=true`. Отдельного addres
 `gator_source=octavia-l4`. ProductResource связывает прежние записи с заказом
 по `resource_uid=/metadata/uid`. Доступ — проектная роль `logging.viewer`.
 Новые события состояния не записываются: актуальное здоровье читается из метрик.
+
+
+`securityGroups` использует обычный формат ссылки name/namespace/uid/resourceVersion.
+Дубли UID и служебные группы не допускаются. `status.securityGroups` содержит
+выбранные name, uid, cloud id; `securityGroupsManaged` отмечает включённое ранее
+декларативное применение SG и сохраняется после возврата к автоматическим правилам. Пустой список возвращает автоматические SG.
+Выбранные SG защищены Usage, пока используются балансировщиком.
+
+Применение использует native Octavia `vip_sg_ids`, а не одноимённое старое поле
+Neutron VIP-порта provider-openstack. Stock AnsibleRun выполняется через Object
+bridge; primary API остаётся одним NetworkLoadBalancer XR.
