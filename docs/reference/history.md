@@ -68,3 +68,6 @@ retentionDays. Права чтения проверяются от пользо�
 `status.tracking.previousSpecHash/previousGeneration` описывают состояние до
 controller write; `effectiveSpecHash/effectiveGeneration` закрепляют подтверждённую
 конфигурацию операции. Разрыв даёт `ConfigurationUnconfirmed` без ложного успеха.
+
+Helm `goMemoryLimit` задаёт soft limit Go, default `192MiB`; `resources` задаёт
+requests/limits контейнера. Значения Go и Kubernetes имеют разный синтаксис единиц.
