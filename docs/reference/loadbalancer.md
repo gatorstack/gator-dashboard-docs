@@ -36,6 +36,19 @@ checkedAt, listeners, members и условия Crossplane. Состояние �
 публикуется для каждой пары обработчик/адрес. Источник фактов — read-only
 OpenStack observer; Compose обновляет status XR.
 
+`phase` отражает результат настройки заказа:
+
+| Значение | Статус в консоли | Значение |
+| --- | --- | --- |
+| Pending | Создаётся | Ресурсы или их изменения ещё согласуются |
+| Ready | Активен | Конфигурация применена независимо от доступности целей |
+| Error | Ошибка настройки | Ошибка provider или актуальный provisioningStatus=ERROR |
+
+`operatingStatus` и `members[].status` — отдельная диагностика здоровья.
+ERROR/OFFLINE/DEGRADED backend не меняют Ready на ошибку. Отсутствующее или
+просроченное наблюдение отображается как UNKNOWN. Условия XR Ready и
+observedGeneration относятся к применению текущей конфигурации.
+
 ## TargetGroup
 
 | Поле spec | Значение |
