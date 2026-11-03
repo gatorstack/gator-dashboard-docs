@@ -241,3 +241,34 @@ remoteWrite должны ссылаться только на этот Secret. �
 В status доступны observedGeneration, conditions, phase и agentRef. Значения
 credentials в status отсутствуют. `Disabled`, `Starting`, `Running`, `Error`
 описывают состояние агента. Удаление и ошибочная конфигурация останавливают экспорт.
+
+
+### Подписи строк из ресурса
+
+Для табличной панели с одним запросом задайте `monitoring.seriesMetadata`:
+
+```yaml
+seriesMetadata:
+  health:
+    itemsPath: /status/items
+    keyPath: /id
+    metricLabel: entity
+    labels:
+      title: /title
+panels:
+- id: health
+  title: Доступность
+  type: table
+  unit: boolean
+  queries:
+  - expr: 'service_available{resource_uid=~"${resource}"}'
+    legend: '{{title}}'
+```
+
+`itemsPath` читает массив ресурса, `keyPath` — ID каждой строки,
+`metricLabel` — соответствующий label метрики. `labels` задаёт до восьми подписей
+из JSON Pointer относительно строки. Поддерживается до 1024 строк.
+Отображаются только текущие ID ресурса. Отсутствующие и неоднозначные серии
+показываются как **Нет данных**, без подстановки нуля. При смене ID или состава
+строк прежние запросы отменяются. Эта настройка меняет подписи; изоляцию
+проектов обеспечивают gateway и MetricOwnershipPolicy.

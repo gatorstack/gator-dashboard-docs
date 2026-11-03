@@ -31,23 +31,21 @@ CRD создаются Crossplane XRD, а не отдельным операто
 path начинается с `/`. Для TCP path сохраняется, но не используется.
 
 `status` содержит phase, message, observedGeneration, внешний address,
-внутренний vipAddress, externalID Octavia, provisioningStatus, operatingStatus,
-checkedAt, listeners, members и условия Crossplane. Состояние отдельных членов
-публикуется для каждой пары обработчик/адрес. Источник фактов — read-only
-OpenStack observer; Compose обновляет status XR.
+внутренний vipAddress, externalID Octavia, metricsEndpoint, listeners,
+members и условия Crossplane. `members` — конфигурация целей: listener,
+address, port, protocol, id (UUID MemberV2), poolID. Health в status XR не
+публикуется; старые operatingStatus/provisioningStatus/checkedAt очищаются.
 
-`phase` отражает результат настройки заказа:
-
-| Значение | Статус в консоли | Значение |
+| phase | Статус в консоли | Значение |
 | --- | --- | --- |
-| Pending | Создаётся | Ресурсы или их изменения ещё согласуются |
+| Pending | Создаётся | Конфигурация ещё согласуется |
 | Ready | Активен | Конфигурация применена независимо от доступности целей |
-| Error | Ошибка настройки | Ошибка provider или актуальный provisioningStatus=ERROR |
+| Error | Ошибка настройки | Ошибка согласования provider |
 
-`operatingStatus` и `members[].status` — отдельная диагностика здоровья.
-ERROR/OFFLINE/DEGRADED backend не меняют Ready на ошибку. Отсутствующее или
-просроченное наблюдение отображается как UNKNOWN. Условия XR Ready и
-observedGeneration относятся к применению текущей конфигурации.
+Табличная секция GVK запрашивает `octavia_member_status` через gateway проекта
+и сопоставляет серии с members по UUID. Свежесть — до 90 секунд. Для TCP
+показывается доступность, для UDP и отсутствующих метрик — **Нет данных**.
+Отсутствие мониторинга не меняет статус заказа.
 
 ## TargetGroup
 
@@ -79,11 +77,9 @@ Compute с label `iaas.gatorstack.dev/managed=true`. Отдельного addres
 Установка и сценарии: [руководство L4](../operator-manual/loadbalancer.md).
 
 
-## Журнал состояний
+## Архив журналов состояний
 
-При `logging.enabled=true` LogSource `loadbalancer` использует фиксированный
-`gator_source=octavia-l4`. ProductResource связывает журнал с NetworkLoadBalancer
-по `resource_uid=/metadata/uid`. События `load_balancer_state` и `target_state`
-содержат `operating_status`, `provisioning_status`, `region`, `loadbalancer`,
-`resource_uid`, `target_uid`, `_time`. Project UID служит маршрутизации ingestion;
-он не принимается из браузера. Доступ — общая проектная роль `logging.viewer`.
+При `logging.enabled=true` сохранён LogSource `loadbalancer` с фильтром
+`gator_source=octavia-l4`. ProductResource связывает прежние записи с заказом
+по `resource_uid=/metadata/uid`. Доступ — проектная роль `logging.viewer`.
+Новые события состояния не записываются: актуальное здоровье читается из метрик.

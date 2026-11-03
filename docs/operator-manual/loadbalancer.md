@@ -13,10 +13,10 @@ Neutron. В namespace каждого проекта должны существ�
 и application credential выбранного региона. Сервисные credentials не выдаются
 пользователям и не копируются в заказы.
 
-Установите [OpenStack-интеграцию](iaas.md) с наблюдателем рабочих состояний:
-native provider не публикует operating/provisioning status. Наблюдатель только
-читает API Octavia и записывает безопасные факты в аннотации managed resources.
-Создание, изменение и удаление облачных ресурсов выполняет provider Crossplane.
+Установите [OpenStack-интеграцию](iaas.md). Lifecycle выполняет native provider
+Crossplane. Отдельный наблюдатель состояний Octavia не требуется.
+Для метрик нужен [мониторинг](monitoring.md), установленный provider-kubernetes
+с InjectedIdentity и native поддержка Octavia `PROMETHEUS` listener.
 
 В комплекте `gator-products` подготовьте профиль:
 
@@ -78,22 +78,17 @@ Floating IP само по себе не означает доступ из ин�
 
 ## Состояние и изменения
 
-Карточка показывает внешний и внутренний адреса, условия Crossplane, рабочие
-состояния Octavia, время наблюдения, обработчики и состояние отдельных целей.
-**Активен** означает успешное применение конфигурации: необходимые ресурсы
-созданы и наблюдаемые параметры соответствуют заказу. Доступность backend
-не влияет на этот статус. Состояния целей `DEGRADED`, `OFFLINE`, `ERROR`
-требуют отдельной проверки приложения, health endpoint, маршрутов и SG.
-При недоступном или устаревшем наблюдении здоровье отображается как `UNKNOWN`;
-это не переводит уже согласованный заказ в ошибку.
+Карточка показывает адреса, условия Crossplane, обработчики и цели.
+**Активен** означает применение конфигурации: необходимые ресурсы созданы,
+наблюдаемые параметры соответствуют заказу. Доступность приложения и
+мониторинга не влияет на этот статус. **Создаётся** означает согласование,
+**Ошибка настройки** — ошибку managed resource/provider.
 
-**Создаётся** означает незавершённое согласование или применение конфигурации
-Octavia. **Ошибка настройки** означает ошибку provider либо актуальный
-`provisioningStatus=ERROR`. Эти состояния отличаются от обычной недоступности
-приложения. Условие XR Ready использует те же критерии готовности конфигурации,
-что и статус заказа; сам по себе успешный заказ не гарантирует ответ приложения.
-Готовая целевая группа означает проверку адресов и ссылок; health проверяется
-конкретным балансировщиком после подключения группы.
+Во вкладке **Целевые ресурсы** таблица мониторинга показывает каждую TCP-цель:
+**Да** — доступна, **Нет** — недоступна. Для UDP и при отсутствии метрик за
+последние 90 секунд — **Нет данных**. Проверьте приложение, health endpoint,
+маршруты и SG, если цель недоступна. Ready целевой группы подтверждает адреса
+и ссылки; успешный заказ сам по себе не гарантирует ответ приложения.
 
 Редактируются описание, метки, защита, обработчики и состав целевой группы.
 Обновление группы передаётся всем использующим её балансировщикам. Регион,
@@ -149,66 +144,82 @@ namespace. Ссылка содержит `name`, `namespace`, `uid`, `resourceVe
 выполняйте удалением соответствующего балансировщика.
 
 
-## Подключить журналы состояний
+## Подключить метрики целей
 
-Нужна установленная [платформа логирования](logging.md) с Kafka/Strimzi,
-LogAccessManager, Vector и VictoriaLogs. В профиле продукта включите источник:
+Добавьте в профиль пакета:
 
 ```yaml
-logging:
+monitoring:
   enabled: true
-  backend: native
-  kafka:
-    namespace: logging
-    cluster: gator-logs
-    topic: gator-logs-loadbalancer
-    user: gator-l4-logs
+  backend: platform
+  port: 8088
+  scraperCIDRs: [192.0.2.10/32]
+  providerConfig: gator-l4-local
+  kubernetesServiceAccount: existing-provider-kubernetes
 ```
 
-Повторите установку продукта. Пакет создаст LogSource и выделенного KafkaUser
-с правами Write/Describe только на topic L4; topic и проектные LogAccess
-согласует общий LogAccessManager. В `kafka.internalProducerPeers` профиля
-платформы логирования разрешите namespace и pod наблюдателя:
+Замените CIDR на фактический source IP доверенного VMAgent, включая SNAT,
+а ServiceAccount — на identity уже установленного provider-kubernetes в
+crossplane-system. Пакет создаёт отдельный ClusterProviderConfig и выдаёт этой
+identity права на MetricSource/MetricOwnershipPolicy. Сервисный credential
+в проект не копируется. TCP-порт мониторинга резервируется в форме и API.
+
+Composition создаёт native `PROMETHEUS` listener с `allowedCidrs`.
+Для External используется основной Floating IP из общего Compute списка.
+Для Internal создаётся отдельный служебный Floating IP и native Neutron
+port forwarding только TCP 8088 → VIP:8088. Рабочие порты остаются внутренними;
+служебный адрес потребляет квоту Floating IP, не появляется как свободный
+Compute-адрес и удаляется вместе с заказом. В Neutron должны быть включены
+`port_forwarding` service plugin и L3 extension. В Kolla это
+`enable_neutron_port_forwarding: "yes"`; применяйте штатный reconfigure Neutron.
+
+В профиле Dashboard выдайте monitoring-контроллеру чтение PoolV2:
 
 ```yaml
-kafka:
-  internalProducerPeers:
-  - namespaceSelector:
-      matchLabels: {kubernetes.io/metadata.name: gator-iaas-catalog}
-    podSelector:
-      matchLabels: {app: iaas-volume-observer}
+monitoring:
+  sourcePermissions:
+  - apiGroups: [lb.openstack.m.crossplane.io]
+    resources: [poolv2s]
+    verbs: [get, list, watch]
+  backend:
+    sourceNetworkPolicy:
+      ipBlocks: [198.51.100.0/24]
+      ports: [8088]
 ```
 
-Обновите платформу логирования. Дождитесь Ready у KafkaUser. Сохраните его
-`password` и `ca.crt` из Secret `gator-logs-cluster-ca-cert` в служебном Secret
-`gator-l4-log-producer` namespace OpenStack-интеграции. Используйте штатную
-доставку Secret; не переносите этот credential в проекты или values-файлы.
-В профиле OpenStack-интеграции включите коллектор:
+Дополните существующие списки, сохранив прежние источники. В `ipBlocks` укажите
+пулы адресов endpoint, в `ports` — порт мониторинга. Эта политика запрещает
+проектным pod прямой scrape защищённых адресов/портов; остальные порты остаются
+доступны. Порт мониторинга внутри указанных CIDR следует выделить только для
+этой цели. Убедитесь, что CNI исполняет NetworkPolicy и пользователь не может
+менять системную политику. Примените защиту до создания PROMETHEUS listener.
 
-```yaml
-iaas:
-  logging:
-    enabled: true
-    existingSecret: gator-l4-log-producer
-    bootstrap: gator-logs-kafka-bootstrap.logging.svc:9093
-    topic: gator-logs-loadbalancer
-    user: gator-l4-logs
-    image: timberio/vector:0.52.0-debian
-    storage: 1Gi
-    storageClass: local-path
-```
+Проверьте MetricSource/MetricOwnershipPolicy с именем `l4-<UID без дефисов,
+первые 24 символа>`, native VMStaticScrape и данные через gateway проекта.
+Ownership использует UUID native пула и регион. Endpoint/IP и статический
+resource_uid не считаются доказательством владельца. Native PoolV2 и Object
+bridge защищаются admission/RBAC. TCP-метрики Octavia не покрывают UDP.
 
-Повторите установку OpenStack-интеграции. Наблюдатель и стандартный Vector
-работают в одном pod с retained PVC для JSONL, checkpoints и disk buffer.
-При обновлении сохраняйте PVC и credentials. При смене пароля обновите Secret
-и перезапустите pod. Убедитесь, что оба контейнера работают, topic Ready,
-LogAccess появился в проектах, а новый балансировщик публикует события во
-вкладку **Логи** и проектный explorer. Доступ назначается ролью `logging.viewer`.
+## Сохранить прежние журналы
 
-Публикуются только Project UID, UID/имя балансировщика, регион, вид события,
-operating/provisioning status и UID цели. События содержат начальный снимок и
-изменения; перезапуск может повторить снимок. Ошибки API, credentials и сырые
-ответы не передаются. Файлы ограничены ротацией 8×8 MiB, очередь Vector —
-512 MiB; длительная недоступность сверх этой ёмкости может потерять старые
-локальные записи. В VictoriaLogs записи хранятся 30 дней после приёма,
-включая удалённые заказы. Запись содержимого TCP/UDP-трафика не выполняется.
+После перехода новые состояния читаются только из мониторинга. При обновлении
+остановите прежний producer и дождитесь доставки очереди, затем отключите
+старый Kafka ingestion. `logging.enabled: true` сохраняет LogSource и вкладку
+для чтения уже принятых событий. Доступ — `logging.viewer`, retention — 30 дней.
+Удалять историю VictoriaLogs при переходе не требуется.
+
+Octavia 2025.2 маркирует pool как `<pool UUID>:<listener UUID>`. Composition
+публикует эту identity в защищённой аннотации native PoolV2; ownership policy
+читает её JSON Pointer. Источник identity — фактически созданные native IDs.
+
+Для чтения таблицы метрик нужны права на ProjectMonitoring/project: назначьте
+monitoring.auditor либо monitoring.viewer в проекте. Продуктовая роль L4 сама
+по себе не открывает все метрики проекта.
+
+
+NetworkPolicy применяется CNI асинхронно. При сетевой проверке дождитесь
+применения политики к тестовому pod: само наличие CR не подтверждает фильтрацию.
+Стандартные роли каталога, включая owner, не дают права создавать произвольные
+pod или hostNetwork-нагрузки. Для проектов с такими дополнительными правами
+нужна отдельная изоляция исходящего трафика scraper; один node-SNAT CIDR не
+отличает доверенный VMAgent от остальных нагрузок узла.
