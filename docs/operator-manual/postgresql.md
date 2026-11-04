@@ -186,6 +186,12 @@ MetricSource и MetricOwnershipPolicy принадлежат сервису. Vic
 записи. Vector передаёт только разрешённые поля PostgreSQL JSON log. Запросы
 логов повторно проверяют caller RBAC и identity основного CR.
 
+Карточка кластера получает графики через штатную секцию monitoring в ProductPage:
+bindings читают metadata.uid и spec.region. PromQL выбирает cluster_uid и region,
+а проектный gateway сохраняет tenant/RBAC-изоляцию. Нужны штатные права
+monitoring.viewer; доступ к заказу сам по себе их не заменяет. Запросы выполняются
+при открытой вкладке «Мониторинг», состояние условий находится в «Диагностике».
+
 Exporter устанавливается из upstream PostgreSQL exporter 0.20.1 с закреплённым
 SHA-256. Системная служба использует local peer authentication и поддерживает
 PostgreSQL 16–18; устаревший бинарный файл пакета Ubuntu не используется.
