@@ -21,7 +21,8 @@
 
 Состояние `Pending` или `Configuring` означает подготовку инфраструктуры и
 PostgreSQL. `Ready` появляется после выполнения плейбука и проверки доступности
-PostgreSQL на хостах. `Degraded` требует проверки служебного мониторинга.
+PostgreSQL на хостах и, для Patroni, TLS через primary endpoint. `Degraded`
+требует проверки служебного мониторинга.
 Карточка показывает условия, безопасное сообщение и наблюдаемые адреса хостов.
 
 ## Подключение
@@ -36,12 +37,13 @@ PostgreSQL на хостах. `Degraded` требует проверки слу�
 
 ```sh
 PGSSLROOTCERT=postgresql-ca.crt psql \
-  'host=HOST_1,HOST_2,HOST_3 port=5432 dbname=postgres user=gator_admin sslmode=verify-full target_session_attrs=read-write'
+  'host=POSTGRESQL_ENDPOINT port=5432 dbname=postgres user=gator_admin sslmode=verify-full target_session_attrs=read-write'
 ```
 
-Для single-node укажите один адрес. Пароль вводится в запросе клиента.
-`target_session_attrs=read-write` выбирает текущий writable primary после
-переключения. Клиентская сеть должна иметь маршрут к адресам сервиса; наличие
+Замените POSTGRESQL_ENDPOINT значением host из данных подключения: у Patroni это
+единый адрес балансировщика, у single-node — адрес хоста. Пароль вводится в
+запросе клиента. `target_session_attrs=read-write` дополнительно проверяет, что
+соединение попало на writable primary. Клиентская сеть должна иметь маршрут к адресу сервиса; наличие
 разрешающего CIDR само по себе маршрут не создаёт. В лабораторной установке
 Floating IP может быть доступен только через VPN.
 Список клиентских сетей меняется через **Изменить** в карточке кластера.

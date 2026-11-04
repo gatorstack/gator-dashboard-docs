@@ -33,9 +33,9 @@ CRD создаются Crossplane XRD, а не отдельным операто
 `targetGroup` и `healthCheck`. Имена и пары protocol/port уникальны.
 Порты находятся в диапазоне 1–65535; алгоритм ROUND_ROBIN.
 
-`healthCheck`: имя, `type` (HTTP/TCP), `port`, `path`, `timeout`, `interval`,
+`healthCheck`: имя, `type` (HTTP/HTTPS/TCP), `port`, `path`, `timeout`, `interval`,
 `healthyThreshold`, `unhealthyThreshold`. Timeout 1–60 секунд, interval 2–300
-секунд, timeout меньше interval. Пороги 1–10. HTTP использует GET и ожидает 200;
+секунд, timeout меньше interval. Пороги 1–10. HTTP/HTTPS использует GET и ожидает 200;
 path начинается с `/`. Для TCP path сохраняется, но не используется.
 
 `status` содержит phase, message, observedGeneration, внешний address,
