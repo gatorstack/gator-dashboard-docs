@@ -249,3 +249,48 @@ identity Kubernetes garbage collector включены в admission boundary, ч
 системная очистка могла удалить composed Objects и их foreground finalizers.
 Credential custodian проверяет отсутствие native потребителей по закреплённому
 UID даже если XR уже отсутствует; Secret удаляются последними.
+
+## Единый primary endpoint и управляемая инфраструктура
+
+Для Patroni требуется установленный L4-продукт с API NetworkLoadBalancer и
+TargetGroup, включёнными custom security groups и stock provider-ansible.
+PostgreSQL Composition создаёт оба XR в namespace проекта, в том же регионе.
+VIP размещается в первой выбранной подсети; внешний адрес выделяется автоматически.
+Single-node балансировщик не заказывает.
+
+TCP 5432 проходит без TLS termination. Health monitor обращается к HTTPS
+`/primary` на private IP каждого хоста, порт 8008; только ответ 200 допускает
+узел к новым подключениям. Клиентский REST listener не создаётся. При switchover
+адрес сохраняется, но существующие сессии требуют reconnect. Настройте повтор
+подключений и транзакций в приложениях.
+
+Composition создаёт отдельную VIP SG с правилами TCP 5432 из allowedCIDRs заказа.
+Backend SG разрешает 5432/8008 от этой SG, включая интерфейсы Amphora.
+Остальные клиенты не получают доступ к Patroni API. Для нового VIP integration
+AnsibleRun добавляет SAN к существующим PostgreSQL сертификатам, сохраняя CA и
+private keys, затем вызывает pg_reload_conf(). Повторный bootstrap не нужен.
+Готовность включает проверку сертификата через адрес балансировщика.
+
+В IaaS публикуются Observe-only InstanceV2 существующих VM через проектный
+ProviderConfig. Protected MR сохраняют управление облаком. Все представления,
+балансировщик и целевая группа имеют managed-аннотацию и владельца PostgreSQLCluster.
+Продуктовые роли определяют возможность чтения; мутации направляются к заказу.
+В managedResources.controllerUsers установки Dashboard добавьте точную ServiceAccount
+identity установленного provider-openstack: помимо status/finalizers, Upjet
+сохраняет служебные аннотации наблюдаемого ресурса.
+Пересмотрите её при смене package revision; wildcard доверие не требуется.
+
+Compute MeteringPolicy исключает ровно managementPolicies=[Observe]. В правилах
+Compute-квоты InstanceV2 задайте selector matchExpressions с ключом
+postgresql.gatorstack.dev/inventory и operator DoesNotExist. Продуктовая admission
+policy запрещает клиенту выставить эту метку для обхода квот и требует для
+помеченных ресурсов Observe-only без Create/Update/Delete и managed-аннотацию. Размеры PostgreSQL
+по-прежнему учитывает квота и тариф основного заказа.
+
+Usage сохраняет хосты, целевую группу и SG до завершения удаления LB. При временной
+потере наблюдения UID или адресов Composition останавливает согласование,
+сохраняя прежние зависимости. Не удаляйте native CR вручную для восстановления.
+
+VIP SG дополнительно разрешает доверенные operatorCIDRs профиля установки:
+служебный runtime проверяет TLS endpoint из этих сетей. Клиентские allowedCIDRs
+не дают доступа к REST API.

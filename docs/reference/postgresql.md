@@ -25,7 +25,8 @@ Single-node требует `replicas: 1` и одну подсеть; Patroni —
 
 Status содержит `observedGeneration`, `conditions`, `phase` и безопасное
 `message`. У кластера также есть `namespaceUID`, `projectUID`, `hosts[]`,
-`configuredHash`, `connectionSecretRef.name`. У пользователя — собственный
+`configuredHash`, `connectionSecretRef.name`, а у Patroni — `endpoint.address`,
+`endpoint.port` и UID-pinned `endpoint.loadBalancerRef`. У пользователя — собственный
 `connectionSecretRef.name`. Пароли и приватные ключи отсутствуют в spec/status.
 
 `PostgreSQLPlacement.spec` объявляет title/description, region, topology,
@@ -46,3 +47,14 @@ replicas и pinned subnets; `PostgreSQLClass.spec` — title и resources.
 conditions; продуктовые роли не предоставляют к нему доступ. Namespaced Object
 мосты и Usage описывают инфраструктуру и порядок её удаления. Служебные пароли,
 SSH private keys и cloud credentials не входят в их manifests/status.
+
+Для Patroni Composition также создаёт NetworkLoadBalancer и TargetGroup группы
+`loadbalancer.gatorstack.dev/v1alpha1`. Обработчик TCP 5432 использует HTTPS
+`/primary:8008`, expected 200, interval 5 с, timeout 3 с, thresholds 2.
+VIP — первая выбранная подсеть, внешний адрес — Auto. Оба ресурса и проектные
+Observe-only InstanceV2 имеют `dashboard.gatorstack.dev/managed: "true"` и
+controller ownerReference на заказ. Управление облачными VM/дисками остаётся у
+protected MR. InstanceV2-проекции имеют `managementPolicies: [Observe]`,
+политику удаления без Delete и точную external identity; их метка
+`postgresql.gatorstack.dev/inventory` защищена admission и исключается из
+Compute-квот окружения. MeteringPolicy Compute исключает Observe-only ресурсы.
