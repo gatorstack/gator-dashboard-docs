@@ -55,6 +55,15 @@ address, port, protocol, id (UUID MemberV2), poolID. Health в status XR не
 показывается доступность, для UDP и отсутствующих метрик — **Нет данных**.
 Отсутствие мониторинга не меняет статус заказа.
 
+Карточка NetworkLoadBalancer содержит вкладку **Мониторинг**. Её панели
+читают `octavia_pool_bytes_in_total`, `octavia_pool_bytes_out_total`,
+`octavia_pool_current_sessions`, `octavia_pool_sessions_total`,
+`octavia_pool_connection_errors_total`, `octavia_pool_response_errors_total`,
+`octavia_pool_current_queue` и `octavia_member_status` с фильтрами
+`resource_uid` = UID XR и `region` = spec.region. Для счётчиков используется
+`rate`; доступность агрегируется по UUID TCP-целей. Datasource — текущий
+проект, права — штатные роли мониторинга.
+
 ## TargetGroup
 
 | Поле spec | Значение |
