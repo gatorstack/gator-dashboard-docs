@@ -15,7 +15,7 @@
 | `service.port` | 8080 |
 | `ingress.enabled` | false |
 | `ingress.className`, `host`, `tls`, `annotations` | Контроллер, DNS, сертификаты и настройки прокси |
-| `webhook.enabled` | true; проверка Project |
+| `webhook.enabled` | true; TLS admission Project и управляемых зависимостей |
 | `webhook.certManager.enabled` | false; включите для автоматического leaf-продления |
 | `webhook.tls.existingSecret`, `caBundle` | Внешний сертификат webhook и CA |
 | `iam.enabled` | true; User/Group требуют установленного Gator Dex |
@@ -142,3 +142,11 @@ logging:
 Secret находится в namespace Dashboard и содержит `token`. URL и credentials
 не переопределяются ProductResource или запросом клиента. По умолчанию список
 пустой. [Полная настройка](../operator-manual/logging.md).
+
+| Параметр | Назначение |
+| --- | --- |
+| `managedResources.enabled` | true; требует webhook.enabled, включает opt-in защиту зависимостей |
+| `managedResources.controllerUsers` | Точные usernames writers, по умолчанию Crossplane core SA |
+| `managedResources.statusUsers` | Точные usernames writers только status/finalizers |
+| `managedResources.cleanupUsers` | Точные usernames cleanup/DELETE; штатный garbage collector |
+| `managedResources.adminGroups` | Административное исключение; по умолчанию system:masters |

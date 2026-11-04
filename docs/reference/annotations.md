@@ -38,3 +38,10 @@
 
 Для пути к ключу с `/` используйте `~1`, например
 `/metadata/labels/cost.gatorstack.dev~1project`.
+
+| Аннотация ресурса | Значение |
+| --- | --- |
+| `dashboard.gatorstack.dev/managed` | Строка `true` включает управление через родительский заказ; `false`/отсутствие — обычный доступ. Меняется только доверенным writer или администратором |
+| `dashboard.gatorstack.dev/managed-by` | JSON apiVersion/kind/name/uid и optional namespace; явная ссылка на владельца в том же namespace вместо controller ownerReference |
+
+Подробности: [управляемые зависимости](../operator-manual/managed-resources.md).
