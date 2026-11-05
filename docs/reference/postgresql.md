@@ -8,15 +8,35 @@
 | PostgreSQLUser | Роль PostgreSQL, сгенерированный пароль и лимит подключений | Создание/удаление; connectionLimit через API |
 | PostgreSQLDatabase | База данных и владелец в выбранном кластере | Создание/удаление |
 | PostgreSQLOperation | Однократные restart и switchover | Создание/удаление записи |
-| PostgreSQLPlacement | Готовый вариант сети/подсетей, регион и зоны | Только контроллер |
+| PostgreSQLPlacement | Прежний каталог готовых размещений; новая форма его не использует | Только контроллер |
 | PostgreSQLClass | Класс ресурсов с vCPU/RAM | Только установочный Helm chart |
 
-`PostgreSQLCluster.spec` содержит `region`, `topology`, `replicas`, `version`,
-`resources.class/vcpu/memoryGiB`, `subnets[].name/uid`, `storageGiB`, `storageType`,
+`PostgreSQLCluster.spec` содержит общие `region`, `topology`, `replicas`,
+`version`, `resources.class/vcpu/memoryGiB`, необязательный `resources.flavorID`, `storageGiB`, `storageType`,
 `allowedCIDRs`, `maxConnections`, `deletionProtection` и `tags`.
-Single-node требует `replicas: 1` и одну подсеть; Patroni — `replicas: 3` и
-три подсети одной сети, в разных зонах одного региона. Контроллер повторно
-проверяет UID, проект, region и zone исходных CR перед созданием инфраструктуры.
+
+Новый ручной заказ задаёт `networkRef.name/uid` и `hosts[]`:
+
+| Поле хоста | Значение |
+| --- | --- |
+| `zone` | Зона выбранного региона |
+| `subnet.name/uid` | Закреплённая identity проектной подсети |
+| `publicAccess` | Разрешить PostgreSQL через внешний адрес хоста с учётом клиентских CIDR |
+| `primaryPriority` | Целое 0–100; больший приоритет предпочитается среди допустимых кандидатов |
+
+Single-node требует `replicas: 1` и один хост; Patroni — `replicas: 3` и три
+хоста с разными зонами и UID подсетей. Все подсети принадлежат выбранной сети,
+региону и проекту. Контроллер повторно проверяет реальные исходные CR до создания
+инфраструктуры. Набор хостов и модель размещения неизменяемы после создания.
+
+Legacy-заказы со `subnets[].name/uid` продолжают работать без миграции. Одновременно
+задавать `hosts` и `subnets` запрещено. Новые параметры не добавляются в прежние
+заказы автоматически. Форма предлагает опубликованные готовые FlavorV2 выбранного
+региона из общего каталога. В resources.flavorID попадает реальный ID выбранного
+флейвора, vcpu/memoryGiB берутся из его характеристик, а class определяется
+профилем установки. Эти поля неизменяемы. Для kubectl-заказа class, ID и количества
+должны соответствовать одному разрешённому региональному флейвору; прежние
+заказы без flavorID сохраняют закреплённый профиль.
 
 Другие заказные CR ссылаются на кластер через `spec.clusterRef.name/uid`.
 `PostgreSQLUser.spec.name` и `PostgreSQLDatabase.spec.name` — имена объектов
@@ -25,7 +45,7 @@ Single-node требует `replicas: 1` и одну подсеть; Patroni —
 
 Status содержит `observedGeneration`, `conditions`, `phase` и безопасное
 `message`. У кластера также есть `namespaceUID`, `projectUID`, `hosts[]`,
-`configuredHash`, `connectionSecretRef.name`, а у Patroni — `endpoint.address`,
+`configuredHash`, `connectionSecretRef.name` и `endpoint.address`,
 `endpoint.port` и UID-pinned `endpoint.loadBalancerRef`. У пользователя — собственный
 `connectionSecretRef.name`. Пароли и приватные ключи отсутствуют в spec/status.
 

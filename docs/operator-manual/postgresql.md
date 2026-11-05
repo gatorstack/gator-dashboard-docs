@@ -7,7 +7,8 @@ Gator Products. Он устанавливает категорию DBaaS, про
 
 ## Предварительные условия
 
-- Dashboard с ProductResource, connection-secret, monitoring и logging GVK.
+- Dashboard 0.26 или новее с ProductResource, radio-cards/object-array,
+  inputBindings/ProjectItems, connection-secret, monitoring и logging GVK.
 - Crossplane 2.x, stock provider-kubernetes 1.4.1 (namespaced Object) и namespaced provider-openstack; в каждом проекте настроен
   `ProviderConfig` с именем региона и проектным application credential Secret.
 - VPC подсети имеют Ready, external ID и аннотацию
@@ -137,15 +138,16 @@ kubectl --context my-cluster apply --server-side \
 ```sh
 kubectl --context my-cluster get providers.pkg.crossplane.io
 kubectl --context my-cluster -n gator-postgresql-system get deployments
-kubectl --context my-cluster -n project-a get postgresqlplacements
+kubectl --context my-cluster -n project-a get networkv2s.networking.openstack.m.crossplane.io
+kubectl --context my-cluster -n project-a get subnetv2s.networking.openstack.m.crossplane.io
 kubectl --context my-cluster -n project-a get quota postgresql
 kubectl --context my-cluster -n project-a get postgresqlclusters
 ```
 
 Ansible provider должен быть Healthy, контроллер и log ingest — Ready.
-Размещения появляются только для подходящих готовых подсетей включённых
-проектов. Неоднозначное размещение нескольких подсетей в одной зоне не
-подбирается автоматически для Patroni. После заказа проверьте SQL read/write,
+Форма заказа получает регионы и зоны из профиля, флейворы — из общего native каталога.
+Пользователь отдельно выбирает готовую сеть и подсеть каждого хоста; каталог
+PostgreSQLPlacement остаётся для совместимости прежних заказов. После заказа проверьте SQL read/write,
 метрики и серверное событие, а для Patroni — replication и switchover.
 
 ## Ответственность компонентов
@@ -300,3 +302,46 @@ Usage сохраняет хосты, целевую группу и SG до за
 VIP SG дополнительно разрешает доверенные operatorCIDRs профиля установки:
 служебный runtime проверяет TLS endpoint из этих сетей. Клиентские allowedCIDRs
 не дают доступа к REST API.
+
+
+## Ручная конфигурация хостов
+
+Новая форма создаёт один PostgreSQLCluster с networkRef и hosts[]. Отдельный
+placement CR при заказе не создаётся. Поле «Флейвор» читает native FlavorV2 из
+namespace `flavorCatalog.namespace` (по умолчанию `gator-iaas-catalog`). Этот
+namespace и общий каталог IaaS должны существовать до установки продукта.
+Доступны только объекты с published=true, меткой cloud выбранного региона,
+Ready=True и реальным ID из `profile.regions.<region>.flavors`. Установочный
+chart выдаёт авторизованным пользователям только get/list/watch FlavorV2 этого
+каталога. Credentials в нём не хранятся.
+
+Количества в `classes` и региональном профиле должны совпадать; один ID нельзя
+сопоставить разным классам. Несогласованный профиль отвергается при рендере chart.
+Server-side selection переносит наблюдаемые vcpus, ram и ID в заказ и закрепляет
+ревизию содержимого флейвора. Перед первым планом Runtime проверяет количества
+в Nova; существующий закреплённый план не перевыбирает флейвор при обновлении
+каталога. Регион и зона не могут подменить provider credentials.
+
+Пользовательские роли PostgreSQL получают только чтение project-scoped
+NetworkV2/SubnetV2 для выбора зависимостей. Server-side selections проверяют
+namespace, UID, ревизию, готовность, регион, сеть и зону строки. Проверки
+выполняются и для оценки стоимости; caller credentials не заменяются учёткой backend.
+
+Для хоста с publicAccess=false Composition выделяет служебный внешний адрес
+без полной ассоциации с портом и создаёт стандартные Neutron PortforwardingV2
+только для SSH 22 и метрик 9187. Security groups ограничивают эти подключения
+операторскими CIDR. Порт 5432 не получает port forwarding и доступен через
+приватный адрес. Регион должен поддерживать floating IP port forwarding;
+служебная маршрутизация и права штатного OpenStack provider остаются prerequisites.
+Для publicAccess=true применяется обычная ассоциация floating IP; клиентские
+CIDR разрешают PostgreSQL. Patroni LB сохраняет отдельный управляемый endpoint.
+
+primaryPriority 0–100 преобразуется в Patroni failover_priority 1–101, чтобы 0
+в интерфейсе сохранял обычную допустимость кандидата. Локальные tags загружаются
+через SIGHUP Patroni, без рестарта PostgreSQL. Приоритет не отменяет WAL,
+репликационные и health-ограничения Patroni; см. [upstream-описание tags](https://patroni.readthedocs.io/en/latest/yaml_configuration.html#tags).
+
+При обновлении существующие spec.subnets, VM/volume IDs, SSH/TLS credentials и
+configuration hash сохраняются. Новый hosts-формат не применяется к ним
+автоматически. До и после обновления сверяйте UID XR/зависимостей, облачные ID,
+идентификатор PostgreSQL, контрольные данные и время запуска postmaster.
