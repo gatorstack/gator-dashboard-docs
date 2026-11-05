@@ -140,6 +140,8 @@ Inline/configMapRef/resourceSchemaRef — взаимоисключающие и�
 | `mappings[].toObject: /metadata/labels` или `/metadata/annotations` | Целая карта строк, только при создании; все ключи и значения проверяются по правилам Kubernetes |
 | `spec.create.nameFromInput` | До 8 строковых JSON pointers input, формирующих стабильное имя в проекте и ProductResource |
 | `spec.delete.title`, `confirmation` | Подпись обычного DELETE и текст подтверждения |
+| `spec.delete.protectionPath` | Boolean-поле заказа: только явный false разрешает удаление |
+| `spec.delete.preview.inventoryPath`, `kindLabels` | Автоматический состав из status и подписи типов; [контракт удаления](deletion.md) |
 | `spec.delete.requireEmptyRelations[]` | relationRef/message: перед DELETE повторно прочитать связь с правами пользователя; непустая связь или ошибка чтения блокируют удаление |
 | `spec.relations` | Именованные связи: pageRef на List того же продукта/проекта, selectorBindings и matchFields из исходника |
 | `spec.lookups` | Именованные источники вариантов: resourceRef, labelSelector, подписи |
