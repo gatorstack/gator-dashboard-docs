@@ -101,3 +101,42 @@ Estimated означает пропуск наблюдений, а не подт
 Для подробного анализа используйте логи компонентов, имеющийся мониторинг
 и OpenObserve. Перед передачей диагностических материалов удалите credentials,
 токены, DSN и тела Secret.
+
+## Все сервисы недоступны, но Kubernetes API отвечает
+
+Проверьте `DiskPressure` и причины ожидания или выселения Pod:
+
+```sh
+oc --context "$GATOR_CONTEXT" get nodes
+oc --context "$GATOR_CONTEXT" describe node "$NODE"
+oc --context "$GATOR_CONTEXT" get pods -A
+oc --context "$GATOR_CONTEXT" -n ingress-nginx describe pod "$INGRESS_POD"
+```
+
+`Ready=True` у узла может сочетаться с `DiskPressure=True`. Тогда существующие
+Pod выселяются из-за нехватки `ephemeral-storage`, а новые не назначаются из-за
+taint. При остановке ingress одновременно становятся недоступны сервисы за ним.
+Статус PVC `Bound` подтверждает привязку томов, но не состояние приложений или данных.
+
+На Ubuntu-узле отдельно проверьте системный filesystem, filesystem контейнеров
+и томов, `/var/log/syslog*` и `journalctl --disk-usage`. Сжатие большого журнала
+тоже требует места: сначала сохраните неизменяемый архив на другом filesystem,
+проверьте его и только затем освобождайте исходный файл.
+
+Для rsyslog задайте `size 100M`, `rotate 7`, `compress`, `nodelaycompress` и
+штатный postrotate с переоткрытием файлов rsyslog. Запускайте проверку logrotate
+каждую минуту. Файл может превысить порог между проверками; недельная ротация
+без ограничения размера не защищает от потока повторяющихся ошибок.
+Семантика настроек описана в [руководстве logrotate](https://github.com/logrotate/logrotate/blob/main/logrotate.8.in).
+
+Для journald используйте отдельный drop-in с `SystemMaxUse=1G`,
+`SystemMaxFileSize=128M`, `SystemKeepFree=5G`, `RuntimeMaxUse=128M`.
+После применения конфигурации выполните ротацию и vacuum архивных journal-файлов;
+активные файлы могут добавлять небольшой объём сверх бюджета.
+См. [ограничения journald](https://www.freedesktop.org/software/systemd/man/255/journald.conf.html).
+
+После освобождения места kubelet должен сам снять `DiskPressure` и taint.
+Дождитесь запуска компонентов и проверьте HTTPS, вход и сервисы с постоянными томами.
+Одновременно устраните источник потока сообщений: например, повторные OOM
+оператора истории и ошибки обращений API server к его недоступному webhook.
+Ротация ограничивает журналы, но не исправляет такой отказ.
