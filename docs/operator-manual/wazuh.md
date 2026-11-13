@@ -147,9 +147,78 @@ Manager сохраняет конфигурацию, ключи агентов, 
 Настройте snapshots indexer и согласованные резервные копии manager и Secret.
 Сохранение PVC не является резервным копированием.
 
+## Хранение и ограничение объёма
+
 По умолчанию сохраняются совпавшие alerts; архивирование всех исходных событий
-отключено. Автоматического удаления старых alert indices в этой поставке нет.
-До подключения большого потока настройте политику хранения и мониторинг места.
+отключено. Поставка автоматически ограничивает историю на двух уровнях:
+
+| Данные | Срок | Объём |
+|---|---|---|
+| Закрытые alert-файлы manager | до 3 дней | до 2 ГиБ суммарно |
+| Активный JSON alert-файл | ротация раз в час или по 100 МиБ | дополнительное место для активного файла и сжатия |
+| Индексы событий indexer | до 7 дней | до 20 ГиБ суммарного store, включая реплики |
+
+При превышении объёма старые данные удаляются раньше. Это верхний срок, а не
+гарантия доступности всей истории за указанное число дней. Настройки values:
+
+```yaml
+retention:
+  intervalSeconds: 60
+manager:
+  retention:
+    days: 3
+    maxBytes: 2147483648
+    maxOutputSize: 100M
+    rotateInterval: 1h
+    plainTextAlerts: false
+indexer:
+  retention:
+    days: 7
+    maxBytes: 21474836480
+    maxIndexGiB: 6
+```
+
+Применяйте значения тем же `deploy-wazuh.py`, сохраняя credential Secrets и PVC.
+JSON alerts остаются включены для Filebeat. Дублирующий `alerts.log` отключён;
+при переходе со старой установки init container удаляет прежнюю активную ссылку
+на этот plaintext-файл до старта manager. Нативная ротация Wazuh ограничивает
+размер активных файлов. Отдельный sidecar каждые 60 секунд удаляет старейшие
+закрытые alerts по возрасту и объёму; активные файлы и только что завершённые
+ротации защищены. Конфигурация, ключи агентов, БД, feed уязвимостей и очереди
+manager не входят в этот бюджет и не очищаются.
+
+Для indexer устанавливается штатная ISM policy `gator-wazuh-events-retention`.
+Она применяется к новым и существующим индексам событий без другой ISM policy:
+удаление по возрасту 7 дней либо при 6 ГиБ primary shards отдельного индекса.
+Sidecar дополнительно проверяет **сумму** store всех индексов событий и удаляет
+старейшие целиком через HTTPS API. Это охватывает alerts, archives, monitoring
+и statistics; security database, настройки Dashboard и state inventory сохраняются.
+Существующая чужая ISM policy не заменяется, но общий бюджет событий продолжает
+действовать.
+
+Если текущий дневной индекс один превышает общий бюджет, он тоже удаляется;
+новые события создадут его заново. Размер проверяется периодически, поэтому
+кратковременное превышение возможно. Translog, merge, служебные индексы, активные
+файлы и БД manager требуют дополнительного места. Это политики удаления, а не
+filesystem quota: `requests.storage` у local-path **не ограничивает** фактический
+объём. Оставляйте запас на диске и контролируйте его свободное место.
+
+Проверяйте работу очистки и последнее успешное выполнение:
+
+```sh
+oc --kubeconfig /secure/kubeconfig -n wazuh logs wazuh-manager-0 -c retention --tail=5
+oc --kubeconfig /secure/kubeconfig -n wazuh logs wazuh-indexer-0 -c retention --tail=5
+oc --kubeconfig /secure/kubeconfig -n wazuh get pods,pvc
+```
+
+У manager и indexer ожидается по два Ready контейнера. Журналы очистки содержат
+счётчики байтов и имена удалённых индексов. `retention_failed` требует проверки
+доступа к alert-каталогу, TLS/API indexer и ISM; при отсутствии успешной очистки
+три интервала sidecar становится NotReady. Ему не выдаются Kubernetes API token
+или privileged mode. Не удаляйте каталоги shard на диске для обхода ошибки API.
+
+Механизмы ротации описаны в [Wazuh global configuration](https://documentation.wazuh.com/current/user-manual/reference/ossec-conf/global.html)
+и [Wazuh index lifecycle management](https://documentation.wazuh.com/current/user-manual/wazuh-indexer-cluster/index-lifecycle-management.html).
 
 cert-manager продлевает сертификат ingress и внутренние сертификаты. После
 обновления внутренних leaf-сертификатов перезапустите соответствующие workloads,
