@@ -159,6 +159,41 @@ FloatingipV2 не создаёт маршрутизацию за предела�
 
 ## Диагностика
 
+### Исчерпана квота security groups в OpenStack
+
+Ошибка Neutron `OverQuota`/`Quota exceeded` может означать исчерпание нативного
+лимита проекта, даже если Quota Gator разрешает заказ. Проверяйте именно
+OpenStack project и регион из его `ProviderConfig`: одинаковый namespace может
+иметь разные подключения в разных регионах. Число групп (`security_groups`) и
+число правил (`security_group_rules`) ограничиваются отдельно.
+
+На административной машине с `openstacksdk` и настроенным cloud выполните
+проверку и повышение только нужного лимита. Замените cloud и UUID проекта:
+
+```python
+from openstack.config import OpenStackConfig
+from openstack.connection import Connection
+
+cfg = OpenStackConfig().get_one_cloud("region-admin")
+project_id = "REPLACE_WITH_VERIFIED_PROJECT_UUID"
+with Connection(config=cfg) as cloud:
+    quota = cloud.network.get_quota(project_id, details=True)
+    print("groups:", quota.security_groups)
+    print("rules:", quota.security_group_rules)
+    current = quota.security_groups["limit"]
+    desired = 20
+    if current != -1 and current < desired:
+        cloud.network.update_quota(project_id, security_groups=desired)
+    print("groups after:", cloud.network.get_quota(project_id, details=True).security_groups)
+```
+
+Профиль администратора храните отдельно от проектных credentials, без вывода
+паролей и токенов. Пример сохраняет unlimited (`-1`) и уже большие лимиты.
+После изменения Neutron повторите заказ или дождитесь очередного reconcile
+Crossplane. Существующие группы и их правила пересоздавать не требуется.
+
+### Другие ошибки согласования
+
 Во вкладке Диагностика доступны Crossplane conditions и сообщение адаптера.
 При долгом Provisioning проверьте состояния RouterInterface и port, наличие
 ProviderConfig в namespace заказа и работоспособность Crossplane. Начальная
